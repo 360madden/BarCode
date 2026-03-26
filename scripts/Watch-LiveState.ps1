@@ -4,6 +4,7 @@ param(
     [int]$DurationSeconds = 30,
     [int]$ReaderSleepMs = 100,
     [int]$PollMs = 200,
+    [int]$StaleAfterMs = 1500,
     [switch]$NoLaunchReader,
     [switch]$Json
 )
@@ -57,9 +58,12 @@ function Format-StateLine {
     $resource = '{0} {1}/{2}' -f $State.resourceKindName, $State.resourceCurrent, $State.resourceMax
     $calling = if ($State.callingName) { $State.callingName } else { $State.callingCode }
     $role = if ($State.roleName) { $State.roleName } else { $State.roleCode }
-    return ('{0} seq={1} ok={2} hp={3} res={4} cast={5} lvl={6} call={7} role={8} search={9} capture={10} conf={11}' -f `
+    $advance = if ($null -ne $State.sequenceAdvance) { $State.sequenceAdvance } else { '' }
+    return ('{0} seq={1} adv={2} fresh={3} ok={4} hp={5} res={6} cast={7} lvl={8} call={9} role={10} search={11} capture={12} conf={13}' -f `
         $State.timestampUtc, `
         $State.sequence, `
+        $advance, `
+        $State.freshFrame, `
         $State.accepted, `
         $health, `
         $resource.Trim(), `
@@ -100,6 +104,8 @@ $startTime = Get-Date
 $deadline = if ($DurationSeconds -gt 0) { $startTime.AddSeconds($DurationSeconds + 3) } else { [DateTime]::MaxValue }
 $lastSignature = ''
 $sawAnyState = $false
+$lastStateSeenAt = $null
+$staleReported = $false
 Write-Output ('Watching {0}' -f $statePath)
 
 while ((Get-Date) -lt $deadline) {
@@ -114,6 +120,8 @@ while ((Get-Date) -lt $deadline) {
             if ($signature -ne $lastSignature) {
                 $lastSignature = $signature
                 $sawAnyState = $true
+                $lastStateSeenAt = Get-Date
+                $staleReported = $false
                 if ($Json) {
                     $state | ConvertTo-Json -Compress
                 } else {
@@ -121,6 +129,14 @@ while ((Get-Date) -lt $deadline) {
                 }
             }
         } catch {
+        }
+    }
+
+    if (-not $Json -and $sawAnyState -and -not $staleReported -and $StaleAfterMs -gt 0 -and $lastStateSeenAt) {
+        $ageMs = [int]((Get-Date) - $lastStateSeenAt).TotalMilliseconds
+        if ($ageMs -ge $StaleAfterMs) {
+            Write-Output ('STALE ageMs={0} lastSeq={1}' -f $ageMs, $state.sequence)
+            $staleReported = $true
         }
     }
 

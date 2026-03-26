@@ -12,6 +12,7 @@ character count note: Character count not precomputed; measure with tooling if n
 class BC_State {
     static Latest := {}
     static LockedGeometry := {}
+    static Session := {}
 
     static GetLockedGeometry() {
         return IsObject(BC_State.LockedGeometry) && BC_State.LockedGeometry.HasOwnProp("Pitch")
@@ -21,6 +22,7 @@ class BC_State {
 
     static ResetLiveOutputs() {
         BC_State.Latest := {}
+        BC_State.Session := BC_State.BuildEmptySession()
         BC_State.WriteSnapshot()
     }
 
@@ -30,6 +32,9 @@ class BC_State {
         hotPage := details.HasOwnProp("HotPage") ? details.HotPage : {}
         image := IsObject(context) && context.HasOwnProp("Image") ? context.Image : {}
         timings := IsObject(context) && context.HasOwnProp("Timings") ? context.Timings : {}
+        sampleIndex := IsObject(context) && context.HasOwnProp("SampleIndex") ? context.SampleIndex : ""
+        sequence := transport.HasOwnProp("Sequence") ? transport.Sequence : ""
+        sessionStats := BC_State.UpdateSessionStats(validationResult, sampleIndex, sequence)
 
         if (validationResult.IsAccepted && details.HasOwnProp("Pitch") && details.Pitch > 0) {
             BC_State.LockedGeometry := {
@@ -44,7 +49,7 @@ class BC_State {
             Accepted: validationResult.IsAccepted,
             Reason: validationResult.Reason,
             Confidence: validationResult.Confidence,
-            Sequence: transport.HasOwnProp("Sequence") ? transport.Sequence : "",
+            Sequence: sequence,
             PageId: transport.HasOwnProp("PageId") ? transport.PageId : "",
             PayloadUsedLength: transport.HasOwnProp("PayloadUsedLength") ? transport.PayloadUsedLength : "",
             SampleMask: hotPage.HasOwnProp("SampleMask") ? hotPage.SampleMask : "",
@@ -74,7 +79,21 @@ class BC_State {
             CaptureMs: IsObject(timings) && timings.HasOwnProp("CaptureMs") ? timings.CaptureMs : "",
             PipelineMs: IsObject(timings) && timings.HasOwnProp("PipelineMs") ? timings.PipelineMs : "",
             AttemptCount: IsObject(timings) && timings.HasOwnProp("AttemptCount") ? timings.AttemptCount : "",
-            SampleIndex: IsObject(context) && context.HasOwnProp("SampleIndex") ? context.SampleIndex : "",
+            SampleIndex: sampleIndex,
+            SessionStartedUtc: sessionStats.SessionStartedUtc,
+            SessionSampleCount: sessionStats.SampleCount,
+            SessionAcceptedCount: sessionStats.AcceptedCount,
+            SessionRejectedCount: sessionStats.RejectedCount,
+            AcceptedStreak: sessionStats.AcceptedStreak,
+            RejectedStreak: sessionStats.RejectedStreak,
+            LastAcceptedTimestampUtc: sessionStats.LastAcceptedTimestampUtc,
+            LastRejectedTimestampUtc: sessionStats.LastRejectedTimestampUtc,
+            LastAcceptedSequence: sessionStats.LastAcceptedSequence,
+            SequenceAdvance: sessionStats.SequenceAdvance,
+            SequenceChanged: sessionStats.SequenceChanged,
+            FreshFrame: sessionStats.FreshFrame,
+            SequenceRepeatedCount: sessionStats.SequenceRepeatedCount,
+            SequenceWrapCount: sessionStats.SequenceWrapCount,
             WindowTitle: BC_State.ResolveWindowTitle(context, image),
             ProcessName: BC_State.ResolveProcessName(context, image),
             Details: details
@@ -131,6 +150,20 @@ class BC_State {
             pipelineMs: BC_State.GetValue(latest, "PipelineMs", ""),
             attemptCount: BC_State.GetValue(latest, "AttemptCount", ""),
             sampleIndex: BC_State.GetValue(latest, "SampleIndex", ""),
+            sessionStartedUtc: BC_State.GetValue(latest, "SessionStartedUtc", ""),
+            sessionSampleCount: BC_State.GetValue(latest, "SessionSampleCount", ""),
+            sessionAcceptedCount: BC_State.GetValue(latest, "SessionAcceptedCount", ""),
+            sessionRejectedCount: BC_State.GetValue(latest, "SessionRejectedCount", ""),
+            acceptedStreak: BC_State.GetValue(latest, "AcceptedStreak", ""),
+            rejectedStreak: BC_State.GetValue(latest, "RejectedStreak", ""),
+            lastAcceptedTimestampUtc: BC_State.GetValue(latest, "LastAcceptedTimestampUtc", ""),
+            lastRejectedTimestampUtc: BC_State.GetValue(latest, "LastRejectedTimestampUtc", ""),
+            lastAcceptedSequence: BC_State.GetValue(latest, "LastAcceptedSequence", ""),
+            sequenceAdvance: BC_State.GetValue(latest, "SequenceAdvance", ""),
+            sequenceChanged: BC_State.GetValue(latest, "SequenceChanged", false),
+            freshFrame: BC_State.GetValue(latest, "FreshFrame", false),
+            sequenceRepeatedCount: BC_State.GetValue(latest, "SequenceRepeatedCount", ""),
+            sequenceWrapCount: BC_State.GetValue(latest, "SequenceWrapCount", ""),
             windowTitle: BC_State.GetValue(latest, "WindowTitle", ""),
             processName: BC_State.GetValue(latest, "ProcessName", "")
         }
@@ -173,6 +206,20 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
         fields.Push(BC_State.JsonNumberField("attemptCount", snapshot.attemptCount))
         fields.Push(BC_State.JsonNumberField("sampleIndex", snapshot.sampleIndex))
+        fields.Push(BC_State.JsonStringField("sessionStartedUtc", snapshot.sessionStartedUtc))
+        fields.Push(BC_State.JsonNumberField("sessionSampleCount", snapshot.sessionSampleCount))
+        fields.Push(BC_State.JsonNumberField("sessionAcceptedCount", snapshot.sessionAcceptedCount))
+        fields.Push(BC_State.JsonNumberField("sessionRejectedCount", snapshot.sessionRejectedCount))
+        fields.Push(BC_State.JsonNumberField("acceptedStreak", snapshot.acceptedStreak))
+        fields.Push(BC_State.JsonNumberField("rejectedStreak", snapshot.rejectedStreak))
+        fields.Push(BC_State.JsonStringField("lastAcceptedTimestampUtc", snapshot.lastAcceptedTimestampUtc))
+        fields.Push(BC_State.JsonStringField("lastRejectedTimestampUtc", snapshot.lastRejectedTimestampUtc))
+        fields.Push(BC_State.JsonNumberField("lastAcceptedSequence", snapshot.lastAcceptedSequence))
+        fields.Push(BC_State.JsonNumberField("sequenceAdvance", snapshot.sequenceAdvance))
+        fields.Push(BC_State.JsonBoolField("sequenceChanged", snapshot.sequenceChanged))
+        fields.Push(BC_State.JsonBoolField("freshFrame", snapshot.freshFrame))
+        fields.Push(BC_State.JsonNumberField("sequenceRepeatedCount", snapshot.sequenceRepeatedCount))
+        fields.Push(BC_State.JsonNumberField("sequenceWrapCount", snapshot.sequenceWrapCount))
         fields.Push(BC_State.JsonStringField("windowTitle", snapshot.windowTitle))
         fields.Push(BC_State.JsonStringField("processName", snapshot.processName))
         return "{`r`n  " BC_Debug.Join(fields, ",`r`n  ") "`r`n}"
@@ -209,9 +256,98 @@ class BC_State {
         lines.Push("PipelineMs: " BC_State.NumberText(snapshot.pipelineMs))
         lines.Push("AttemptCount: " BC_State.NumberText(snapshot.attemptCount))
         lines.Push("SampleIndex: " BC_State.NumberText(snapshot.sampleIndex))
+        lines.Push("SessionStartedUtc: " snapshot.sessionStartedUtc)
+        lines.Push("SessionCounts: " BC_State.NumberText(snapshot.sessionSampleCount) "/" BC_State.NumberText(snapshot.sessionAcceptedCount) "/" BC_State.NumberText(snapshot.sessionRejectedCount))
+        lines.Push("AcceptedStreak: " BC_State.NumberText(snapshot.acceptedStreak))
+        lines.Push("RejectedStreak: " BC_State.NumberText(snapshot.rejectedStreak))
+        lines.Push("LastAcceptedTimestampUtc: " snapshot.lastAcceptedTimestampUtc)
+        lines.Push("LastRejectedTimestampUtc: " snapshot.lastRejectedTimestampUtc)
+        lines.Push("LastAcceptedSequence: " BC_State.NumberText(snapshot.lastAcceptedSequence))
+        lines.Push("SequenceAdvance: " BC_State.NumberText(snapshot.sequenceAdvance))
+        lines.Push("SequenceChanged: " BC_State.BoolText(snapshot.sequenceChanged))
+        lines.Push("FreshFrame: " BC_State.BoolText(snapshot.freshFrame))
+        lines.Push("SequenceRepeatedCount: " BC_State.NumberText(snapshot.sequenceRepeatedCount))
+        lines.Push("SequenceWrapCount: " BC_State.NumberText(snapshot.sequenceWrapCount))
         lines.Push("WindowTitle: " snapshot.windowTitle)
         lines.Push("ProcessName: " snapshot.processName)
         return BC_Debug.Join(lines, "`r`n")
+    }
+
+    static BuildEmptySession() {
+        return {
+            SessionStartedUtc: A_NowUTC,
+            SampleCount: 0,
+            AcceptedCount: 0,
+            RejectedCount: 0,
+            AcceptedStreak: 0,
+            RejectedStreak: 0,
+            LastAcceptedTimestampUtc: "",
+            LastRejectedTimestampUtc: "",
+            LastAcceptedSequence: "",
+            SequenceAdvance: "",
+            SequenceChanged: false,
+            FreshFrame: false,
+            SequenceRepeatedCount: 0,
+            SequenceWrapCount: 0
+        }
+    }
+
+    static EnsureSession() {
+        if (!IsObject(BC_State.Session) || !BC_State.Session.HasOwnProp("SessionStartedUtc")) {
+            BC_State.Session := BC_State.BuildEmptySession()
+        }
+        return BC_State.Session
+    }
+
+    static UpdateSessionStats(validationResult, sampleIndex, sequence) {
+        session := BC_State.EnsureSession()
+
+        if (sampleIndex = "") {
+            return session
+        }
+
+        session.SampleCount := sampleIndex
+        session.SequenceAdvance := ""
+        session.SequenceChanged := false
+        session.FreshFrame := false
+
+        if (validationResult.IsAccepted) {
+            session.AcceptedCount += 1
+            session.AcceptedStreak += 1
+            session.RejectedStreak := 0
+            session.LastAcceptedTimestampUtc := A_NowUTC
+
+            if (sequence != "") {
+                if (session.LastAcceptedSequence != "") {
+                    sequenceAdvance := sequence - session.LastAcceptedSequence
+                    if (sequenceAdvance < 0) {
+                        sequenceAdvance += 256
+                    }
+                    session.SequenceAdvance := sequenceAdvance
+                    session.SequenceChanged := sequenceAdvance != 0
+                    session.FreshFrame := session.SequenceChanged
+                    if (sequenceAdvance = 0) {
+                        session.SequenceRepeatedCount += 1
+                    }
+                    if (sequence < session.LastAcceptedSequence) {
+                        session.SequenceWrapCount += 1
+                    }
+                } else {
+                    session.SequenceAdvance := ""
+                    session.SequenceChanged := true
+                    session.FreshFrame := true
+                }
+
+                session.LastAcceptedSequence := sequence
+            }
+        } else {
+            session.RejectedCount += 1
+            session.RejectedStreak += 1
+            session.AcceptedStreak := 0
+            session.LastRejectedTimestampUtc := A_NowUTC
+        }
+
+        return session
     }
 
     static ResolveWindowTitle(context, image) {
