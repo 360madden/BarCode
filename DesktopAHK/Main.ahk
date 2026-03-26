@@ -46,6 +46,16 @@ try {
             throw Error("live mode sleep must be non-negative")
         }
         result := BC_Tests.RunLiveDecode(sampleCount, sleepMs)
+    } else if (mode = "watch") {
+        durationSeconds := A_Args.Length >= 2 ? Integer(A_Args[2]) : 0
+        sleepMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 100
+        if (durationSeconds < 0) {
+            throw Error("watch mode duration must be non-negative")
+        }
+        if (sleepMs < 0) {
+            throw Error("watch mode sleep must be non-negative")
+        }
+        result := BC_Tests.RunLiveWatch(durationSeconds, sleepMs)
     } else if (mode = "smoke") {
         result := BC_Tests.RunReaderSmoke()
     } else {

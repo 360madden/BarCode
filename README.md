@@ -14,3 +14,16 @@ Common local checks:
 .\scripts\Verify-Reader.cmd -SkipLive
 .\scripts\Verify-Reader.cmd -LiveIterations 3 -LiveSamples 10 -LiveSleepMs 100
 ```
+
+Live data watch:
+
+```powershell
+.\scripts\Run-AhkScript.cmd -ScriptPath .\DesktopAHK\Main.ahk watch 10 100
+.\scripts\Watch-LiveState.cmd -DurationSeconds 10 -ReaderSleepMs 100
+```
+
+Latest live-state artifacts:
+
+- `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.json`
+- `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.txt`
+- `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\phase2-watch.txt`

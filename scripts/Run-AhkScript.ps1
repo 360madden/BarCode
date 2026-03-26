@@ -41,11 +41,16 @@ $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $null = $process.Start()
 
-$finished = $process.WaitForExit($TimeoutMs)
-if (-not $finished) {
-    $process.Kill()
+$finished = $true
+if ($TimeoutMs -gt 0) {
+    $finished = $process.WaitForExit($TimeoutMs)
+    if (-not $finished) {
+        $process.Kill()
+        $process.WaitForExit()
+        Write-Output 'TimedOut=true'
+    }
+} else {
     $process.WaitForExit()
-    Write-Output 'TimedOut=true'
 }
 
 $stdout = $process.StandardOutput.ReadToEnd()

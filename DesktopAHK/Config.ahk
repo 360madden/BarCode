@@ -45,13 +45,17 @@ class BC_Config {
     static DataRoot := BC_ConfigResolveDataRoot()
     static ReportDir := BC_Config.DataRoot "\out"
     static FixtureDir := BC_Config.DataRoot "\fixtures"
+    static StateDir := BC_Config.DataRoot "\state"
     static GoodFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot.bmp"
     static CorruptFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot_corrupt.bmp"
     static SmokeReportPath := BC_Config.ReportDir "\phase2-reader-smoke.txt"
     static FixedBmpReportPath := BC_Config.ReportDir "\phase2-fixed-bmp.txt"
     static LiveReportPath := BC_Config.ReportDir "\phase2-live.txt"
+    static LiveWatchReportPath := BC_Config.ReportDir "\phase2-watch.txt"
     static LiveCaptureBmpPath := BC_Config.ReportDir "\phase2-live-last-capture.bmp"
     static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
+    static LiveStateJsonPath := BC_Config.StateDir "\latest-state.json"
+    static LiveStateTextPath := BC_Config.StateDir "\latest-state.txt"
 
     static SymbolPanelLight := { R: 245, G: 245, B: 245 }
     static ModuleDark := { R: 16, G: 16, B: 16 }

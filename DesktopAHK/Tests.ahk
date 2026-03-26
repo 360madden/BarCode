@@ -127,9 +127,14 @@ class BC_Tests {
         lockedCount := 0
         searchedCount := 0
         sampleIndex := 1
+        title := WinGetTitle("ahk_id " hwnd)
+        processName := WinGetProcessName("ahk_id " hwnd)
+
+        BC_State.ResetLiveOutputs()
 
         while (sampleIndex <= sampleCount) {
             result := BC_Tests.DecodeLiveFrame(hwnd)
+            BC_Tests.ApplyLiveFrameState(result, sampleIndex, title, processName, true)
             validation := result.Validation
             totalCaptureMs += result.Timings.CaptureMs
             totalPipelineMs += result.Timings.PipelineMs
@@ -158,8 +163,6 @@ class BC_Tests {
             throw Error("Live decode produced no samples.")
         }
 
-        title := WinGetTitle("ahk_id " hwnd)
-        processName := WinGetProcessName("ahk_id " hwnd)
         client := lastResult.Image.ClientRect
         validation := lastResult.Validation
         details := validation.Details
@@ -212,6 +215,93 @@ class BC_Tests {
         return {
             Success: acceptedCount > 0,
             ReportPath: BC_Config.LiveReportPath
+        }
+    }
+
+    static RunLiveWatch(durationSeconds := 0, sleepMs := 100) {
+        hwnd := BC_Capture.FindRiftWindow()
+        if !hwnd {
+            throw Error("No likely RIFT window was found for live capture.")
+        }
+
+        title := WinGetTitle("ahk_id " hwnd)
+        processName := WinGetProcessName("ahk_id " hwnd)
+        startedAt := A_TickCount
+        sampleIndex := 1
+        acceptedCount := 0
+        rejectedCount := 0
+        lastResult := ""
+        totalCaptureMs := 0
+        totalPipelineMs := 0
+        lockedCount := 0
+        searchedCount := 0
+
+        BC_State.ResetLiveOutputs()
+
+        while (durationSeconds <= 0 || (A_TickCount - startedAt) < (durationSeconds * 1000)) {
+            result := BC_Tests.DecodeLiveFrame(hwnd)
+            BC_Tests.ApplyLiveFrameState(result, sampleIndex, title, processName, true)
+            validation := result.Validation
+            totalCaptureMs += result.Timings.CaptureMs
+            totalPipelineMs += result.Timings.PipelineMs
+            if (validation.IsAccepted) {
+                acceptedCount += 1
+            } else {
+                rejectedCount += 1
+            }
+
+            if (result.Detection.SearchMode = "locked") {
+                lockedCount += 1
+            } else {
+                searchedCount += 1
+            }
+
+            lastResult := result
+            if (sleepMs > 0) {
+                Sleep sleepMs
+            }
+            sampleIndex += 1
+        }
+
+        if !IsObject(lastResult) {
+            throw Error("Live watch produced no samples.")
+        }
+
+        sampleCount := sampleIndex - 1
+        client := lastResult.Image.ClientRect
+        validation := lastResult.Validation
+        details := validation.Details
+        reportLines := []
+        reportLines.Push("BarCode live watch report")
+        reportLines.Push("WindowTitle: " title)
+        reportLines.Push("ProcessName: " processName)
+        reportLines.Push("ClientRect: " client.x "," client.y " " client.width "x" client.height)
+        reportLines.Push("DurationSeconds: " durationSeconds)
+        reportLines.Push("SleepMs: " sleepMs)
+        reportLines.Push("Samples: " sampleCount)
+        reportLines.Push("AcceptedSamples: " acceptedCount)
+        reportLines.Push("RejectedSamples: " rejectedCount)
+        reportLines.Push("LockedSamples: " lockedCount)
+        reportLines.Push("SearchedSamples: " searchedCount)
+        reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
+        reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
+        reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / Max(1, sampleCount), 2))
+        reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / Max(1, sampleCount), 2))
+        reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
+        reportLines.Push("LastReason: " validation.Reason)
+        reportLines.Push("LastConfidence: " validation.Confidence)
+        reportLines.Push("SearchMode: " details.SearchMode)
+        reportLines.Push("Origin: " details.OriginX "," details.OriginY)
+        reportLines.Push("Pitch: " Round(details.Pitch, 3))
+        reportLines.Push("BandSize: " Round(details.BandWidth, 3) "x" Round(details.BandHeight, 3))
+        reportLines.Push("BorderErrors: " details.BorderErrors)
+        reportLines.Push("StateJson: " BC_Config.LiveStateJsonPath)
+        reportLines.Push("StateText: " BC_Config.LiveStateTextPath)
+        BC_Debug.WriteText(BC_Config.LiveWatchReportPath, BC_Debug.Join(reportLines, "`r`n"))
+
+        return {
+            Success: acceptedCount > 0,
+            ReportPath: BC_Config.LiveWatchReportPath
         }
     }
 
@@ -309,6 +399,13 @@ class BC_Tests {
                 Validation: validation
             }
         }
+    }
+
+    static ApplyLiveFrameState(result, sampleIndex, title, processName, persistSnapshot := false) {
+        result.SampleIndex := sampleIndex
+        result.WindowTitle := title
+        result.ProcessName := processName
+        BC_State.Update(result.Validation, result, persistSnapshot)
     }
 
     static RenderMatrixToPixels(profile, matrix) {
