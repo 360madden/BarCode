@@ -9,6 +9,12 @@
 
 BarCode = BarCode or {}
 BarCode.Gather = {}
+BarCode.Gather.State = {
+  playerUnitId = nil,
+  lastCastbar = nil,
+  lastCastbarSource = nil,
+  lastCastbarAt = 0
+}
 
 BarCode.Gather.ResourceKind = {
   none = 0,
@@ -210,6 +216,98 @@ function BarCode.Gather.GetClientSize()
   return math.floor((tonumber(width) or 0) + 0.5), math.floor((tonumber(height) or 0) + 0.5)
 end
 
+function BarCode.Gather.GetRealtimeNow()
+  if Inspect ~= nil and Inspect.Time ~= nil and Inspect.Time.Real ~= nil then
+    return Inspect.Time.Real()
+  end
+
+  return 0
+end
+
+function BarCode.Gather.GetPlayerUnitId()
+  local state = BarCode.Gather.State
+
+  if state.playerUnitId ~= nil and state.playerUnitId ~= false then
+    return state.playerUnitId
+  end
+
+  if Inspect ~= nil and Inspect.Unit ~= nil and Inspect.Unit.Lookup ~= nil then
+    state.playerUnitId = Inspect.Unit.Lookup("player")
+    return state.playerUnitId
+  end
+
+  return nil
+end
+
+function BarCode.Gather.InspectCastbar(unit)
+  if unit == nil or Inspect == nil or Inspect.Unit == nil or Inspect.Unit.Castbar == nil then
+    return nil
+  end
+
+  return Inspect.Unit.Castbar(unit)
+end
+
+function BarCode.Gather.RefreshCastbarCache(unitHint, reason)
+  local state = BarCode.Gather.State
+  local playerUnitId = BarCode.Gather.GetPlayerUnitId()
+  local candidates = {}
+  local index
+
+  if unitHint ~= nil and unitHint ~= false then
+    candidates[#candidates + 1] = {
+      unit = unitHint,
+      source = "hint"
+    }
+  end
+
+  if playerUnitId ~= nil and playerUnitId ~= false then
+    candidates[#candidates + 1] = {
+      unit = playerUnitId,
+      source = "player-unit-id"
+    }
+  end
+
+  candidates[#candidates + 1] = {
+    unit = "player",
+    source = "player-specifier"
+  }
+
+  for index = 1, #candidates do
+    local candidate = candidates[index]
+    local detail = BarCode.Gather.InspectCastbar(candidate.unit)
+    if detail ~= nil and next(detail) ~= nil then
+      state.lastCastbar = detail
+      state.lastCastbarSource = candidate.source
+      state.lastCastbarAt = BarCode.Gather.GetRealtimeNow()
+      return detail, candidate.source
+    end
+  end
+
+  if reason == "castbar-cleared" then
+    state.lastCastbar = nil
+    state.lastCastbarSource = nil
+    state.lastCastbarAt = BarCode.Gather.GetRealtimeNow()
+  end
+
+  return nil, "none"
+end
+
+function BarCode.Gather.GetCachedCastbar()
+  local state = BarCode.Gather.State
+  local maxAge = BarCode.Config.castbarCacheSeconds or 0
+  local now = BarCode.Gather.GetRealtimeNow()
+
+  if state.lastCastbar == nil then
+    return nil, "none"
+  end
+
+  if maxAge <= 0 or now <= 0 or (now - (state.lastCastbarAt or 0)) <= maxAge then
+    return state.lastCastbar, state.lastCastbarSource or "cache"
+  end
+
+  return nil, "expired"
+end
+
 function BarCode.Gather.EncodeCallingCode(value)
   local code = MatchTokenCode(BarCode.Gather.CallingTokens, value)
   return code
@@ -300,9 +398,14 @@ end
 function BarCode.Gather.BuildCastbarSnapshot()
   local castbarAvailable = Inspect ~= nil and Inspect.Unit ~= nil and Inspect.Unit.Castbar ~= nil
   local castbar = {}
+  local castbarSource = "none"
 
   if castbarAvailable then
-    castbar = Inspect.Unit.Castbar("player") or {}
+    castbar, castbarSource = BarCode.Gather.RefreshCastbarCache(nil, "poll")
+    if castbar == nil then
+      castbar, castbarSource = BarCode.Gather.GetCachedCastbar()
+    end
+    castbar = castbar or {}
   end
 
   local ability = tostring(castbar.ability or "")
@@ -344,6 +447,7 @@ function BarCode.Gather.BuildCastbarSnapshot()
     progressQ15 = ClampUnsigned16(progress),
     ability = ability,
     abilityName = abilityName,
+    source = castbarSource,
     remainingSeconds = remaining,
     durationSeconds = duration,
     expiredSeconds = expired
@@ -374,8 +478,10 @@ function BarCode.Gather.BuildDebugProbe(player, cast, resource, callingCode, cal
     selectedResourceSource = resource.source or "none",
     selectedResourceCurrent = resource.current or 0,
     selectedResourceMax = resource.maximum or 0,
+    playerUnitId = BarCode.Gather.GetPlayerUnitId(),
     castAbility = NormalizeText(cast.ability),
     castAbilityName = NormalizeText(cast.abilityName),
+    castSource = cast.source or "none",
     castDurationSeconds = cast.durationSeconds or 0,
     castRemainingSeconds = cast.remainingSeconds or 0,
     castExpiredSeconds = cast.expiredSeconds or 0,

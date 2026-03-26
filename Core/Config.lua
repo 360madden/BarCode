@@ -20,6 +20,7 @@ BarCode.Config = {
   chatColorHex = "#4DEAFF",
   probeLoggingEnabled = true,
   probeLoggingMaxEvents = 16,
+  castbarCacheSeconds = 0.75,
   refreshIntervalSeconds = 0.10,
   refreshIntervalCastingSeconds = 0.05,
   transportBytes = 76,

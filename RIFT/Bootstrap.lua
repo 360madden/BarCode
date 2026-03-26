@@ -143,8 +143,33 @@ function BarCode.Bootstrap.OnUpdateBegin()
   BarCode.Bootstrap.SafeRefreshTelemetry(false, "update")
 end
 
-function BarCode.Bootstrap.OnCastbarChanged()
+function BarCode.Bootstrap.OnCastbarChanged(units)
   if BarCode.Bootstrap.state == nil then
+    return
+  end
+
+  local playerUnitId = BarCode.Gather.GetPlayerUnitId()
+  local playerChanged = false
+
+  if type(units) == "table" then
+    local unitId
+    local visible
+    for unitId, visible in pairs(units) do
+      if unitId == playerUnitId or unitId == "player" then
+        playerChanged = true
+        if visible then
+          BarCode.Gather.RefreshCastbarCache(unitId, "castbar-event")
+        else
+          BarCode.Gather.RefreshCastbarCache(unitId, "castbar-cleared")
+        end
+      end
+    end
+  else
+    playerChanged = true
+    BarCode.Gather.RefreshCastbarCache(playerUnitId, "castbar-event")
+  end
+
+  if not playerChanged then
     return
   end
 
