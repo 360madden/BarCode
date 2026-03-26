@@ -179,6 +179,8 @@ class BC_Tests {
         reportLines.Push("RejectedSamples: " rejectedCount)
         reportLines.Push("LockedSamples: " lockedCount)
         reportLines.Push("SearchedSamples: " searchedCount)
+        reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
+        reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / sampleCount, 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / sampleCount, 2))
         reportLines.Push("FirstAcceptedSequence: " firstAcceptedSequence)
@@ -220,17 +222,43 @@ class BC_Tests {
     }
 
     static DecodeLiveFrame(hwnd, cropX := 0, cropY := 0) {
+        totalCaptureMs := 0
+        totalPipelineMs := 0
+        attemptSources := []
+
         captureStarted := A_TickCount
-        image := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY)
-        captureMs := A_TickCount - captureStarted
+        primaryImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY)
+        totalCaptureMs += A_TickCount - captureStarted
+        attemptSources.Push(primaryImage.SourceKind)
 
         pipelineStarted := A_TickCount
-        result := BC_Tests.DecodeImage(image)
-        result.Timings := {
-            CaptureMs: captureMs,
-            PipelineMs: A_TickCount - pipelineStarted
+        bestResult := BC_Tests.TryDecodeImage(primaryImage)
+        totalPipelineMs += A_TickCount - pipelineStarted
+
+        if !bestResult.Validation.IsAccepted {
+            fallbackSource := primaryImage.SourceKind = "printwindow-client" ? "screen" : "printwindow"
+            BC_Debug.Trace("tests.live:fallback=" fallbackSource "`r`n")
+            captureStarted := A_TickCount
+            fallbackImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, fallbackSource)
+            totalCaptureMs += A_TickCount - captureStarted
+            attemptSources.Push(fallbackImage.SourceKind)
+
+            pipelineStarted := A_TickCount
+            fallbackResult := BC_Tests.TryDecodeImage(fallbackImage)
+            totalPipelineMs += A_TickCount - pipelineStarted
+
+            if (BC_Tests.IsPreferredLiveResult(fallbackResult, bestResult)) {
+                bestResult := fallbackResult
+            }
         }
-        return result
+
+        bestResult.Timings := {
+            CaptureMs: totalCaptureMs,
+            PipelineMs: totalPipelineMs,
+            AttemptCount: attemptSources.Length
+        }
+        bestResult.CaptureAttempts := attemptSources
+        return bestResult
     }
 
     static DecodeImage(image) {
@@ -245,6 +273,41 @@ class BC_Tests {
             Detection: detection,
             Decode: decodeResult,
             Validation: validation
+        }
+    }
+
+    static TryDecodeImage(image) {
+        profile := BC_Protocol.GetProfile()
+
+        try {
+            return BC_Tests.DecodeImage(image)
+        } catch as err {
+            details := {
+                BorderErrors: 999,
+                Threshold: 0,
+                BlackMean: 0,
+                WhiteMean: 0,
+                MinMargin: 0,
+                OriginX: 0,
+                OriginY: 0,
+                Pitch: 0,
+                BandWidth: image.Width,
+                BandHeight: image.Height,
+                SearchMode: "decode-exception",
+                Contrast: 0,
+                Failure: err.Message
+            }
+            detection := BC_Interfaces.DetectionResult(profile, 0, 0, 0, 999, err.Message, 0, 0, 0, image.Width, image.Height, 0, "decode-exception")
+            decodeResult := BC_Interfaces.DecodeResult([], 0, 0, 0)
+            validation := BC_Interfaces.ValidationResult(false, err.Message, 0.0, details)
+            BC_State.Update(validation)
+
+            return {
+                Image: image,
+                Detection: detection,
+                Decode: decodeResult,
+                Validation: validation
+            }
         }
     }
 
@@ -294,6 +357,30 @@ class BC_Tests {
 
     static BoolText(value) {
         return value ? "true" : "false"
+    }
+
+    static IsPreferredLiveResult(candidate, baseline) {
+        if !IsObject(baseline) {
+            return true
+        }
+
+        if (candidate.Validation.IsAccepted != baseline.Validation.IsAccepted) {
+            return candidate.Validation.IsAccepted
+        }
+
+        if (candidate.Detection.BorderErrors != baseline.Detection.BorderErrors) {
+            return candidate.Detection.BorderErrors < baseline.Detection.BorderErrors
+        }
+
+        if (Abs(candidate.Validation.Confidence - baseline.Validation.Confidence) > 0.0001) {
+            return candidate.Validation.Confidence > baseline.Validation.Confidence
+        }
+
+        if (Abs(candidate.Detection.Contrast - baseline.Detection.Contrast) > 0.5) {
+            return candidate.Detection.Contrast > baseline.Detection.Contrast
+        }
+
+        return false
     }
 }
 
