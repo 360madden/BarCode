@@ -1,17 +1,15 @@
 Identifier = "BarCode"
-Name = {
-  English = "BarCode"
-}
-Description = {
-  English = "Static BC-Strip/1 renderer spike for RIFT."
-}
+Name = "BarCode"
+NameShort = "BC"
+Description = "Static BC-Strip/1 renderer spike for RIFT."
 Author = "360madden"
 Email = "360madden@gmail.com"
 Website = ""
 Version = "0.1.0"
-Environment = "3.2"
+Environment = "4.4"
 RunOnStartup = {
   "Core/Config.lua",
+  "RIFT/ErrorTrap.lua",
   "Core/Pack.lua",
   "Core/Protocol.lua",
   "RIFT/Diagnostics.lua",

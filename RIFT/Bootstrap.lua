@@ -2,7 +2,7 @@
 -- version: 0.1.0
 -- purpose: Initializes the BarCode RIFT integration and renders the static protocol band at startup.
 -- dependencies: Core/Config.lua, Core/Protocol.lua, Core/Pack.lua, RIFT/Diagnostics.lua, RIFT/Render.lua
--- important assumptions: Uses Event.Addon.Startup.End and documented frame/layout APIs. The exact highest-safe strata remains unverified.
+-- important assumptions: Uses Event.Addon.Load.End and documented frame/layout APIs. The exact highest-safe strata remains unverified.
 -- protocol version: BC-Strip/1
 -- framework module role: RIFT integration bootstrap
 -- character count note: Character count not precomputed; measure with tooling if needed.
@@ -40,20 +40,25 @@ function BarCode.Bootstrap.Initialize()
   BarCode.Diagnostics.Log("Rendered profile: " .. renderState.plan.profile.id)
 end
 
-function BarCode.Bootstrap.OnStartup(_, startedAddonIdentifier)
-  if startedAddonIdentifier ~= addonIdentifier then
+function BarCode.Bootstrap.OnLoadEnd(_, loadedAddonIdentifier)
+  if loadedAddonIdentifier ~= addonIdentifier then
     return
   end
 
   if BarCode.Config.showOnStartup then
-    BarCode.Bootstrap.Initialize()
+    BarCode.Diagnostics.Log("Load event received for v" .. BarCode.Config.addonVersion .. ".")
+
+    local ok, failureMessage = pcall(BarCode.Bootstrap.Initialize)
+    if not ok then
+      BarCode.Diagnostics.Log("Initialization failed: " .. tostring(failureMessage))
+    end
   end
 end
 
 Command.Event.Attach(
-  Event.Addon.Startup.End,
-  BarCode.Bootstrap.OnStartup,
-  "BarCode.Bootstrap.OnStartup"
+  Event.Addon.Load.End,
+  BarCode.Bootstrap.OnLoadEnd,
+  "BarCode.Bootstrap.OnLoadEnd"
 )
 
 -- end-of-script marker comment
