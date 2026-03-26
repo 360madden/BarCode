@@ -1,6 +1,6 @@
 -- script name: Core/Pack.lua
--- version: 0.1.0
--- purpose: Supplies deterministic bit packing and CRC helpers for BC-Strip/1.
+-- version: 0.2.0
+-- purpose: Supplies deterministic bit packing, byte writing, witness fill, and CRC helpers for BC-Strip/1.
 -- dependencies: Core/Config.lua
 -- important assumptions: Uses CRC-16/CCITT-FALSE semantics with big-endian byte emission.
 -- protocol version: BC-Strip/1
@@ -9,6 +9,20 @@
 
 BarCode = BarCode or {}
 BarCode.Pack = {}
+
+function BarCode.Pack.ClampUnsigned(value, maxValue)
+  local number = math.floor(tonumber(value) or 0)
+
+  if number < 0 then
+    return 0
+  end
+
+  if number > maxValue then
+    return maxValue
+  end
+
+  return number
+end
 
 function BarCode.Pack.BitXor(leftValue, rightValue)
   local result = 0
@@ -67,6 +81,40 @@ function BarCode.Pack.Crc16(bytes, startIndex, endIndex)
   end
 
   return crc
+end
+
+function BarCode.Pack.PutUInt8(bytes, index, value)
+  bytes[index] = BarCode.Pack.ClampUnsigned(value, 0xFF)
+  return index + 1
+end
+
+function BarCode.Pack.PutUInt16(bytes, index, value)
+  local number = BarCode.Pack.ClampUnsigned(value, 0xFFFF)
+  bytes[index] = math.floor(number / 0x100)
+  bytes[index + 1] = math.fmod(number, 0x100)
+  return index + 2
+end
+
+function BarCode.Pack.PutUInt24(bytes, index, value)
+  local number = BarCode.Pack.ClampUnsigned(value, 0xFFFFFF)
+  bytes[index] = math.floor(number / 0x10000)
+  bytes[index + 1] = math.floor(math.fmod(number, 0x10000) / 0x100)
+  bytes[index + 2] = math.fmod(number, 0x100)
+  return index + 3
+end
+
+function BarCode.Pack.FillWitness(bytes, startIndex, count)
+  local index
+  local value = 0xA5
+
+  for index = startIndex, startIndex + count - 1 do
+    bytes[index] = value
+    if value == 0xA5 then
+      value = 0x5A
+    else
+      value = 0xA5
+    end
+  end
 end
 
 -- end-of-script marker comment

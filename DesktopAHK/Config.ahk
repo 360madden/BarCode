@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Config.ahk
-version: 0.1.0
-purpose: Defines shared configuration values for the BarCode AHK phase 1 harness.
+version: 0.2.0
+purpose: Defines shared configuration values for the BarCode AHK reader smoke harness.
 dependencies: AutoHotkey v2.0+
-important assumptions: Phase 1 works against synthetic 24-bit BMP fixtures and the P720A profile only.
+important assumptions: The minimum reader smoke uses fixed-profile BC-Strip/1 geometry, but BMP decoding may need to solve a scaled top-left symbol panel inside a larger screenshot.
 protocol version: BC-Strip/1
 framework module role: Desktop configuration
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -11,20 +11,37 @@ character count note: Character count not precomputed; measure with tooling if n
 
 class BC_Config {
     static AppName := "BarCode"
-    static AppVersion := "0.1.0"
+    static AppVersion := "0.2.0"
     static ProtocolVersion := 1
     static LayoutId := 1
     static ProfileId := 1
-    static SchemaId := 1
-    static StaticSequence := 42
-    static StaticPayloadLength := 24
+    static SchemaId := 2
+    static PageIdPlayerCoreHot := 0
+    static PageIdPlayerCoreCold := 1
+    static TransportBytes := 76
+    static HeaderBytes := 12
+    static PayloadBytes := 56
+    static FooterBytes := 8
+    static HotPayloadUsedLength := 24
+    static MaxBorderErrors := 12
+    static SearchMinPitch := 4.00
+    static SearchMaxPitch := 8.00
+    static SearchCoarsePitchStep := 0.25
+    static SearchFinePitchStep := 0.05
+    static SearchMaxOriginX := 80
+    static SearchMaxOriginY := 80
+    static SearchCoarseXStep := 2
+    static SearchCoarseYStep := 1
+    static SearchCaptureHeight := 160
     static ReportDir := A_ScriptDir "\out"
     static FixtureDir := A_ScriptDir "\fixtures"
-    static GoodFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_static.bmp"
-    static CorruptFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_corrupt.bmp"
-    static GoodReportPath := A_ScriptDir "\out\phase1-smoke.txt"
+    static GoodFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_hot.bmp"
+    static CorruptFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_hot_corrupt.bmp"
+    static SmokeReportPath := A_ScriptDir "\out\phase2-reader-smoke.txt"
+    static FixedBmpReportPath := A_ScriptDir "\out\phase2-fixed-bmp.txt"
+    static LatestRunPath := A_ScriptDir "\out\latest-run.txt"
 
-    static BandLight := { R: 245, G: 245, B: 245 }
+    static SymbolPanelLight := { R: 245, G: 245, B: 245 }
     static ModuleDark := { R: 16, G: 16, B: 16 }
 
     static ProfileP720A() {

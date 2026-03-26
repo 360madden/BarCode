@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Decode.ahk
-version: 0.1.0
-purpose: Samples BC-Strip/1 cells and reconstructs the transport bytes from a detected band.
+version: 0.2.0
+purpose: Samples BC-Strip/1 cells and reconstructs the transport bytes from a detected band using exact or scaled geometry.
 dependencies: DesktopAHK/Detect.ahk, DesktopAHK/Interfaces.ahk, DesktopAHK/Protocol.ahk
-important assumptions: Uses center-point sampling and exact profile geometry in phase 1.
+important assumptions: Uses center-point kernel sampling and depends on the detection layer to solve any scaled top-left panel geometry.
 protocol version: BC-Strip/1
 framework module role: Decode
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -13,6 +13,9 @@ class BC_Decode {
     static Decode(image, detection) {
         profile := detection.Profile
         threshold := detection.Threshold
+        originX := detection.OriginX
+        originY := detection.OriginY
+        pitch := detection.Pitch > 0 ? detection.Pitch : profile.Pitch
         bits := []
         minMargin := 999999
 
@@ -20,7 +23,7 @@ class BC_Decode {
         while (row <= profile.GridRows - 1) {
             column := 2
             while (column <= profile.GridColumns - 1) {
-                value := BC_Detect.SampleModuleCenter(image, profile, column, row)
+                value := BC_Detect.SampleModuleCenter(image, profile, column, row, originX, originY, pitch)
                 margin := Abs(value - threshold)
                 if (margin < minMargin) {
                     minMargin := margin

@@ -67,19 +67,19 @@ class BC_Debug {
         paddedStride := rowStride + Mod(4 - Mod(rowStride, 4), 4)
         pixelBytes := paddedStride * height
         fileSize := 54 + pixelBytes
-        buffer := Buffer(fileSize, 0)
+        bmpBuffer := Buffer(fileSize, 0)
 
-        NumPut("UChar", Asc("B"), buffer, 0)
-        NumPut("UChar", Asc("M"), buffer, 1)
-        NumPut("UInt", fileSize, buffer, 2)
-        NumPut("UInt", 54, buffer, 10)
-        NumPut("UInt", 40, buffer, 14)
-        NumPut("Int", width, buffer, 18)
-        NumPut("Int", height, buffer, 22)
-        NumPut("UShort", 1, buffer, 26)
-        NumPut("UShort", 24, buffer, 28)
-        NumPut("UInt", 0, buffer, 30)
-        NumPut("UInt", pixelBytes, buffer, 34)
+        NumPut("UChar", Ord("B"), bmpBuffer, 0)
+        NumPut("UChar", Ord("M"), bmpBuffer, 1)
+        NumPut("UInt", fileSize, bmpBuffer, 2)
+        NumPut("UInt", 54, bmpBuffer, 10)
+        NumPut("UInt", 40, bmpBuffer, 14)
+        NumPut("Int", width, bmpBuffer, 18)
+        NumPut("Int", height, bmpBuffer, 22)
+        NumPut("UShort", 1, bmpBuffer, 26)
+        NumPut("UShort", 24, bmpBuffer, 28)
+        NumPut("UInt", 0, bmpBuffer, 30)
+        NumPut("UInt", pixelBytes, bmpBuffer, 34)
 
         destOffset := 54
         row := 0
@@ -89,7 +89,7 @@ class BC_Debug {
             columnOffset := 0
             while (columnOffset < rowStride) {
                 value := NumGet(pixelsBgrTopDown, sourceOffset + columnOffset, "UChar")
-                NumPut("UChar", value, buffer, destOffset + columnOffset)
+                NumPut("UChar", value, bmpBuffer, destOffset + columnOffset)
                 columnOffset += 1
             }
             destOffset += paddedStride
@@ -100,7 +100,7 @@ class BC_Debug {
         BC_Debug.EnsureParentDir(path)
         file := FileOpen(path, "w")
         BC_Debug.Trace("debug.writebmp:file-open`r`n")
-        file.RawWrite(buffer, fileSize)
+        file.RawWrite(bmpBuffer, fileSize)
         file.Close()
         BC_Debug.Trace("debug.writebmp:file-closed`r`n")
     }
