@@ -1,8 +1,8 @@
 -- script name: Core/Gather.lua
--- version: 0.2.0
--- purpose: Gathers and normalizes live player telemetry into a fixed hot-page snapshot contract.
+-- version: 0.3.0
+-- purpose: Gathers and normalizes the scoped player-target HUD telemetry snapshot for BarCode.
 -- dependencies: Core/Config.lua
--- important assumptions: Uses Inspect.Unit.Detail("player") and Inspect.Unit.Castbar("player"), both locally precedent-backed and listed in the RIFT API index.
+-- important assumptions: Uses locally precedent-backed Inspect.Unit.Detail/Lookup/Castbar and Inspect.Stat fields; damage-estimate bytes remain reserved until a verified source exists.
 -- protocol version: BC-Strip/1
 -- framework module role: Core live data gather/normalize
 -- character count note: Character count not precomputed; measure with tooling if needed.
@@ -11,6 +11,7 @@ BarCode = BarCode or {}
 BarCode.Gather = {}
 BarCode.Gather.State = {
   playerUnitId = nil,
+  targetUnitId = nil,
   lastCastbar = nil,
   lastCastbarSource = nil,
   lastCastbarAt = 0
@@ -21,24 +22,44 @@ BarCode.Gather.ResourceKind = {
   mana = 1,
   energy = 2,
   charge = 3,
-  planar = 4
+  planar = 4,
+  power = 5
 }
 
 BarCode.Gather.SampleBits = {
-  health = 0x0001,
-  resource = 0x0002,
-  cast = 0x0004,
-  level = 0x0008,
-  calling = 0x0010,
-  role = 0x0020
+  playerHealth = 0x0001,
+  playerResource = 0x0002,
+  playerLevel = 0x0004,
+  playerCalling = 0x0008,
+  playerRole = 0x0010,
+  playerCast = 0x0020,
+  playerPowerAttack = 0x0040,
+  playerCritAttack = 0x0080,
+  playerPowerSpell = 0x0100,
+  playerCritSpell = 0x0200,
+  playerCritPower = 0x0400,
+  playerHit = 0x0800,
+  targetHealth = 0x1000,
+  targetResource = 0x2000,
+  targetLevel = 0x4000,
+  targetFlags = 0x8000
 }
 
 BarCode.Gather.StateBits = {
   playerAvailable = 0x0001,
-  alive = 0x0002,
-  combat = 0x0004,
-  resourceAvailable = 0x0008,
-  castActive = 0x0010
+  playerAlive = 0x0002,
+  playerCombat = 0x0004,
+  playerCastActive = 0x0008,
+  playerResourceAvailable = 0x0010,
+  targetPresent = 0x0020,
+  targetAlive = 0x0040,
+  targetCombat = 0x0080,
+  targetResourceAvailable = 0x0100
+}
+
+BarCode.Gather.TargetBits = {
+  player = 0x01,
+  pet = 0x02
 }
 
 BarCode.Gather.CastBits = {
@@ -51,7 +72,8 @@ BarCode.Gather.CallingTokens = {
   { token = "mage", code = 1 },
   { token = "rogue", code = 2 },
   { token = "cleric", code = 3 },
-  { token = "warrior", code = 4 }
+  { token = "warrior", code = 4 },
+  { token = "primalist", code = 5 }
 }
 
 BarCode.Gather.RoleTokens = {
@@ -232,19 +254,52 @@ function BarCode.Gather.GetPlayerUnitId()
   end
 
   if Inspect ~= nil and Inspect.Unit ~= nil and Inspect.Unit.Lookup ~= nil then
-    state.playerUnitId = Inspect.Unit.Lookup("player")
+    state.playerUnitId = Inspect.Unit.Lookup("player") or nil
     return state.playerUnitId
   end
 
   return nil
 end
 
+function BarCode.Gather.GetTargetUnitId()
+  if Inspect ~= nil and Inspect.Unit ~= nil and Inspect.Unit.Lookup ~= nil then
+    BarCode.Gather.State.targetUnitId = Inspect.Unit.Lookup("player.target") or nil
+    return BarCode.Gather.State.targetUnitId
+  end
+
+  return nil
+end
+
+function BarCode.Gather.InspectUnitDetail(unit)
+  if unit == nil or unit == false or unit == "" or Inspect == nil or Inspect.Unit == nil or Inspect.Unit.Detail == nil then
+    return {}
+  end
+
+  local ok, detail = pcall(function()
+    return Inspect.Unit.Detail(unit)
+  end)
+
+  if not ok or type(detail) ~= "table" then
+    return {}
+  end
+
+  return detail
+end
+
 function BarCode.Gather.InspectCastbar(unit)
-  if unit == nil or Inspect == nil or Inspect.Unit == nil or Inspect.Unit.Castbar == nil then
+  if unit == nil or unit == false or unit == "" or Inspect == nil or Inspect.Unit == nil or Inspect.Unit.Castbar == nil then
     return nil
   end
 
-  return Inspect.Unit.Castbar(unit)
+  local ok, castbar = pcall(function()
+    return Inspect.Unit.Castbar(unit)
+  end)
+
+  if not ok then
+    return nil
+  end
+
+  return castbar
 end
 
 function BarCode.Gather.RefreshCastbarCache(unitHint, reason)
@@ -347,23 +402,29 @@ function BarCode.Gather.GetPreferredResourceKind(callingCode)
     return BarCode.Gather.ResourceKind.energy
   end
 
+  if callingCode == 5 then
+    return BarCode.Gather.ResourceKind.power
+  end
+
   return BarCode.Gather.ResourceKind.none
 end
 
 function BarCode.Gather.SelectPrimaryResource(player, callingCode)
+  local powerMaximum = player.powerMax
+  if powerMaximum == nil and player.power ~= nil then
+    powerMaximum = 100
+  end
+
   local candidates = {
     BuildResourceCandidate(BarCode.Gather.ResourceKind.mana, player.mana, player.manaMax, "mana", 0),
     BuildResourceCandidate(BarCode.Gather.ResourceKind.energy, player.energy, player.energyMax, "energy", 0),
     BuildResourceCandidate(BarCode.Gather.ResourceKind.charge, player.charge, player.chargeMax, "charge", 0),
-    BuildResourceCandidate(BarCode.Gather.ResourceKind.planar, player.planar, player.planarMax, "planar", 0)
+    BuildResourceCandidate(BarCode.Gather.ResourceKind.planar, player.planar, player.planarMax, "planar", 0),
+    BuildResourceCandidate(BarCode.Gather.ResourceKind.power, player.power, powerMaximum, "power", player.power ~= nil and 1 or 0)
   }
   local preferredKind = BarCode.Gather.GetPreferredResourceKind(callingCode)
   local bestCandidate = nil
   local index
-
-  if preferredKind ~= BarCode.Gather.ResourceKind.none and player.power ~= nil then
-    candidates[#candidates + 1] = BuildResourceCandidate(preferredKind, player.power, 100, "power-fallback", 1)
-  end
 
   for index = 1, #candidates do
     local candidate = candidates[index]
@@ -454,7 +515,56 @@ function BarCode.Gather.BuildCastbarSnapshot()
   }
 end
 
-function BarCode.Gather.BuildDebugProbe(player, cast, resource, callingCode, callingRaw, roleCode, roleRaw)
+function BarCode.Gather.SafeInspectStat(statName)
+  if statName == nil or Inspect == nil or Inspect.Stat == nil then
+    return nil
+  end
+
+  local ok, value = pcall(function()
+    return Inspect.Stat(statName)
+  end)
+
+  if not ok then
+    return nil
+  end
+
+  return value
+end
+
+function BarCode.Gather.BuildCombatStatsSnapshot()
+  local function BuildStatField(statName)
+    local value = BarCode.Gather.SafeInspectStat(statName)
+    return {
+      value = ClampUnsigned16(value),
+      available = value ~= nil
+    }
+  end
+
+  return {
+    powerAttack = BuildStatField("powerAttack"),
+    critAttack = BuildStatField("critAttack"),
+    powerSpell = BuildStatField("powerSpell"),
+    critSpell = BuildStatField("critSpell"),
+    critPower = BuildStatField("critPower"),
+    hit = BuildStatField("hit")
+  }
+end
+
+function BarCode.Gather.BuildTargetFlags(target)
+  local flags = 0
+
+  if target.player then
+    flags = flags + BarCode.Gather.TargetBits.player
+  end
+
+  if target.isPet then
+    flags = flags + BarCode.Gather.TargetBits.pet
+  end
+
+  return ClampUnsigned8(flags)
+end
+
+function BarCode.Gather.BuildDebugProbe(player, target, cast, playerResource, targetResource, combatStats, callingCode, callingRaw, roleCode, roleRaw, targetCallingCode, targetCallingRaw, targetUnitId)
   return {
     availability = NormalizeText(player.availability),
     rawCalling = NormalizeText(player.calling),
@@ -474,11 +584,33 @@ function BarCode.Gather.BuildDebugProbe(player, cast, resource, callingCode, cal
     planar = player.planar,
     planarMax = player.planarMax,
     power = player.power,
-    selectedResourceKind = resource.kindId or 0,
-    selectedResourceSource = resource.source or "none",
-    selectedResourceCurrent = resource.current or 0,
-    selectedResourceMax = resource.maximum or 0,
+    selectedResourceKind = playerResource.kindId or 0,
+    selectedResourceSource = playerResource.source or "none",
+    selectedResourceCurrent = playerResource.current or 0,
+    selectedResourceMax = playerResource.maximum or 0,
     playerUnitId = BarCode.Gather.GetPlayerUnitId(),
+    targetUnitId = targetUnitId,
+    targetName = NormalizeText(target.name),
+    targetCalling = NormalizeText(target.calling),
+    targetMatchedCalling = targetCallingRaw or "",
+    targetCallingCode = targetCallingCode or 0,
+    targetHealth = target.health,
+    targetHealthMax = target.healthMax,
+    targetPower = target.power,
+    targetMana = target.mana,
+    targetManaMax = target.manaMax,
+    targetEnergy = target.energy,
+    targetEnergyMax = target.energyMax,
+    targetResourceKind = targetResource.kindId or 0,
+    targetResourceSource = targetResource.source or "none",
+    targetResourceCurrent = targetResource.current or 0,
+    targetResourceMax = targetResource.maximum or 0,
+    powerAttack = combatStats.powerAttack.value or 0,
+    critAttack = combatStats.critAttack.value or 0,
+    powerSpell = combatStats.powerSpell.value or 0,
+    critSpell = combatStats.critSpell.value or 0,
+    critPower = combatStats.critPower.value or 0,
+    hit = combatStats.hit.value or 0,
     castAbility = NormalizeText(cast.ability),
     castAbilityName = NormalizeText(cast.abilityName),
     castSource = cast.source or "none",
@@ -492,20 +624,26 @@ function BarCode.Gather.BuildDebugProbe(player, cast, resource, callingCode, cal
 end
 
 function BarCode.Gather.BuildPlayerSnapshot()
-  local player = {}
-  if Inspect ~= nil and Inspect.Unit ~= nil and Inspect.Unit.Detail ~= nil then
-    player = Inspect.Unit.Detail("player") or {}
-  end
-
+  local player = BarCode.Gather.InspectUnitDetail("player")
+  local targetUnitId = BarCode.Gather.GetTargetUnitId()
+  local target = BarCode.Gather.InspectUnitDetail(targetUnitId)
   local cast = BarCode.Gather.BuildCastbarSnapshot()
   local callingCode, callingRaw = BarCode.Gather.ResolveCalling(player)
   local roleCode, roleRaw = BarCode.Gather.ResolveRole(player)
-  local resource = BarCode.Gather.SelectPrimaryResource(player, callingCode)
+  local targetCallingCode, targetCallingRaw = BarCode.Gather.ResolveCalling(target)
+  local playerResource = BarCode.Gather.SelectPrimaryResource(player, callingCode)
+  local targetResource = BarCode.Gather.SelectPrimaryResource(target, targetCallingCode)
+  local combatStats = BarCode.Gather.BuildCombatStatsSnapshot()
   local clientWidth, clientHeight = BarCode.Gather.GetClientSize()
   local playerAvailable = next(player) ~= nil
-  local healthCurrent = ClampUnsigned24(player.health)
-  local healthMaximum = ClampUnsigned24(player.healthMax)
-  local level = ClampUnsigned8(player.level)
+  local targetAvailable = next(target) ~= nil
+  local playerHealthCurrent = ClampUnsigned24(player.health)
+  local playerHealthMaximum = ClampUnsigned24(player.healthMax)
+  local playerLevel = ClampUnsigned8(player.level)
+  local targetHealthCurrent = ClampUnsigned24(target.health)
+  local targetHealthMaximum = ClampUnsigned24(target.healthMax)
+  local targetLevel = ClampUnsigned8(target.level)
+  local targetFlags = BarCode.Gather.BuildTargetFlags(target)
   local sampleMask = 0
   local stateFlags = 0
 
@@ -514,40 +652,93 @@ function BarCode.Gather.BuildPlayerSnapshot()
   end
 
   if player.health ~= nil or player.healthMax ~= nil then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.health
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerHealth
   end
 
-  if healthCurrent > 0 then
-    stateFlags = stateFlags + BarCode.Gather.StateBits.alive
+  if playerHealthCurrent > 0 then
+    stateFlags = stateFlags + BarCode.Gather.StateBits.playerAlive
   end
 
   if player.combat then
-    stateFlags = stateFlags + BarCode.Gather.StateBits.combat
+    stateFlags = stateFlags + BarCode.Gather.StateBits.playerCombat
   end
 
-  if resource.available then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.resource
-    stateFlags = stateFlags + BarCode.Gather.StateBits.resourceAvailable
+  if playerResource.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerResource
+    stateFlags = stateFlags + BarCode.Gather.StateBits.playerResourceAvailable
   end
 
   if cast.available then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.cast
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCast
   end
 
   if cast.active then
-    stateFlags = stateFlags + BarCode.Gather.StateBits.castActive
+    stateFlags = stateFlags + BarCode.Gather.StateBits.playerCastActive
   end
 
   if player.level ~= nil then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.level
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerLevel
   end
 
   if callingCode > 0 then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.calling
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCalling
   end
 
   if roleCode > 0 then
-    sampleMask = sampleMask + BarCode.Gather.SampleBits.role
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerRole
+  end
+
+  if combatStats.powerAttack.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerPowerAttack
+  end
+
+  if combatStats.critAttack.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritAttack
+  end
+
+  if combatStats.powerSpell.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerPowerSpell
+  end
+
+  if combatStats.critSpell.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritSpell
+  end
+
+  if combatStats.critPower.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritPower
+  end
+
+  if combatStats.hit.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.playerHit
+  end
+
+  if targetAvailable then
+    stateFlags = stateFlags + BarCode.Gather.StateBits.targetPresent
+  end
+
+  if target.health ~= nil or target.healthMax ~= nil then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.targetHealth
+  end
+
+  if targetHealthCurrent > 0 then
+    stateFlags = stateFlags + BarCode.Gather.StateBits.targetAlive
+  end
+
+  if target.combat then
+    stateFlags = stateFlags + BarCode.Gather.StateBits.targetCombat
+  end
+
+  if targetResource.available then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.targetResource
+    stateFlags = stateFlags + BarCode.Gather.StateBits.targetResourceAvailable
+  end
+
+  if target.level ~= nil then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.targetLevel
+  end
+
+  if targetAvailable then
+    sampleMask = sampleMask + BarCode.Gather.SampleBits.targetFlags
   end
 
   return {
@@ -556,19 +747,48 @@ function BarCode.Gather.BuildPlayerSnapshot()
     playerAvailable = playerAvailable,
     sampleMask = ClampUnsigned16(sampleMask),
     stateFlags = ClampUnsigned16(stateFlags),
-    resourceKindId = resource.kindId,
-    healthCurrent = healthCurrent,
-    healthMax = healthMaximum,
-    resourceCurrent = resource.current,
-    resourceMax = resource.maximum,
-    castFlags = cast.flags,
-    castProgressQ15 = cast.progressQ15,
-    level = level,
-    callingCode = callingCode,
-    roleCode = roleCode,
+    playerResourceKindId = playerResource.kindId,
+    playerHealthCurrent = playerHealthCurrent,
+    playerHealthMax = playerHealthMaximum,
+    playerResourceCurrent = playerResource.current,
+    playerResourceMax = playerResource.maximum,
+    playerLevel = playerLevel,
+    playerCallingCode = callingCode,
+    playerRoleCode = roleCode,
+    playerCastFlags = cast.flags,
+    playerCastProgressQ15 = cast.progressQ15,
+    playerPowerAttack = combatStats.powerAttack.value,
+    playerCritAttack = combatStats.critAttack.value,
+    playerPowerSpell = combatStats.powerSpell.value,
+    playerCritSpell = combatStats.critSpell.value,
+    playerCritPower = combatStats.critPower.value,
+    playerHit = combatStats.hit.value,
+    targetResourceKindId = targetResource.kindId,
+    targetHealthCurrent = targetHealthCurrent,
+    targetHealthMax = targetHealthMaximum,
+    targetResourceCurrent = targetResource.current,
+    targetResourceMax = targetResource.maximum,
+    targetLevel = targetLevel,
+    targetFlags = targetFlags,
+    playerDamageEstimate = 0,
+    targetDamageEstimate = 0,
     castActive = cast.active,
-    resourceSource = resource.source,
-    debugProbe = BarCode.Gather.BuildDebugProbe(player, cast, resource, callingCode, callingRaw, roleCode, roleRaw)
+    resourceSource = playerResource.source,
+    debugProbe = BarCode.Gather.BuildDebugProbe(
+      player,
+      target,
+      cast,
+      playerResource,
+      targetResource,
+      combatStats,
+      callingCode,
+      callingRaw,
+      roleCode,
+      roleRaw,
+      targetCallingCode,
+      targetCallingRaw,
+      targetUnitId
+    )
   }
 end
 

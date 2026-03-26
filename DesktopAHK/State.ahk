@@ -58,19 +58,35 @@ class BC_State {
             PayloadUsedLength: transport.HasOwnProp("PayloadUsedLength") ? transport.PayloadUsedLength : "",
             SampleMask: hotPage.HasOwnProp("SampleMask") ? hotPage.SampleMask : "",
             StateFlags: hotPage.HasOwnProp("StateFlags") ? hotPage.StateFlags : "",
-            ResourceKindId: hotPage.HasOwnProp("ResourceKindId") ? hotPage.ResourceKindId : "",
-            ResourceKindName: hotPage.HasOwnProp("ResourceKindId") ? BC_State.ResourceKindName(hotPage.ResourceKindId) : "",
-            HealthCurrent: hotPage.HasOwnProp("HealthCurrent") ? hotPage.HealthCurrent : "",
-            HealthMax: hotPage.HasOwnProp("HealthMax") ? hotPage.HealthMax : "",
-            ResourceCurrent: hotPage.HasOwnProp("ResourceCurrent") ? hotPage.ResourceCurrent : "",
-            ResourceMax: hotPage.HasOwnProp("ResourceMax") ? hotPage.ResourceMax : "",
-            CastFlags: hotPage.HasOwnProp("CastFlags") ? hotPage.CastFlags : "",
-            CastProgressQ15: hotPage.HasOwnProp("CastProgressQ15") ? hotPage.CastProgressQ15 : "",
-            Level: hotPage.HasOwnProp("Level") ? hotPage.Level : "",
-            CallingCode: hotPage.HasOwnProp("CallingCode") ? hotPage.CallingCode : "",
-            CallingName: hotPage.HasOwnProp("CallingCode") ? BC_State.CallingName(hotPage.CallingCode) : "",
-            RoleCode: hotPage.HasOwnProp("RoleCode") ? hotPage.RoleCode : "",
-            RoleName: hotPage.HasOwnProp("RoleCode") ? BC_State.RoleName(hotPage.RoleCode) : "",
+            PlayerResourceKindId: hotPage.HasOwnProp("PlayerResourceKindId") ? hotPage.PlayerResourceKindId : "",
+            PlayerResourceKindName: hotPage.HasOwnProp("PlayerResourceKindId") ? BC_State.ResourceKindName(hotPage.PlayerResourceKindId) : "",
+            PlayerHealthCurrent: hotPage.HasOwnProp("PlayerHealthCurrent") ? hotPage.PlayerHealthCurrent : "",
+            PlayerHealthMax: hotPage.HasOwnProp("PlayerHealthMax") ? hotPage.PlayerHealthMax : "",
+            PlayerResourceCurrent: hotPage.HasOwnProp("PlayerResourceCurrent") ? hotPage.PlayerResourceCurrent : "",
+            PlayerResourceMax: hotPage.HasOwnProp("PlayerResourceMax") ? hotPage.PlayerResourceMax : "",
+            PlayerCastFlags: hotPage.HasOwnProp("PlayerCastFlags") ? hotPage.PlayerCastFlags : "",
+            PlayerCastProgressQ15: hotPage.HasOwnProp("PlayerCastProgressQ15") ? hotPage.PlayerCastProgressQ15 : "",
+            PlayerLevel: hotPage.HasOwnProp("PlayerLevel") ? hotPage.PlayerLevel : "",
+            PlayerCallingCode: hotPage.HasOwnProp("PlayerCallingCode") ? hotPage.PlayerCallingCode : "",
+            PlayerCallingName: hotPage.HasOwnProp("PlayerCallingCode") ? BC_State.CallingName(hotPage.PlayerCallingCode) : "",
+            PlayerRoleCode: hotPage.HasOwnProp("PlayerRoleCode") ? hotPage.PlayerRoleCode : "",
+            PlayerRoleName: hotPage.HasOwnProp("PlayerRoleCode") ? BC_State.RoleName(hotPage.PlayerRoleCode) : "",
+            PlayerPowerAttack: hotPage.HasOwnProp("PlayerPowerAttack") ? hotPage.PlayerPowerAttack : "",
+            PlayerCritAttack: hotPage.HasOwnProp("PlayerCritAttack") ? hotPage.PlayerCritAttack : "",
+            PlayerPowerSpell: hotPage.HasOwnProp("PlayerPowerSpell") ? hotPage.PlayerPowerSpell : "",
+            PlayerCritSpell: hotPage.HasOwnProp("PlayerCritSpell") ? hotPage.PlayerCritSpell : "",
+            PlayerCritPower: hotPage.HasOwnProp("PlayerCritPower") ? hotPage.PlayerCritPower : "",
+            PlayerHit: hotPage.HasOwnProp("PlayerHit") ? hotPage.PlayerHit : "",
+            TargetResourceKindId: hotPage.HasOwnProp("TargetResourceKindId") ? hotPage.TargetResourceKindId : "",
+            TargetResourceKindName: hotPage.HasOwnProp("TargetResourceKindId") ? BC_State.ResourceKindName(hotPage.TargetResourceKindId) : "",
+            TargetHealthCurrent: hotPage.HasOwnProp("TargetHealthCurrent") ? hotPage.TargetHealthCurrent : "",
+            TargetHealthMax: hotPage.HasOwnProp("TargetHealthMax") ? hotPage.TargetHealthMax : "",
+            TargetResourceCurrent: hotPage.HasOwnProp("TargetResourceCurrent") ? hotPage.TargetResourceCurrent : "",
+            TargetResourceMax: hotPage.HasOwnProp("TargetResourceMax") ? hotPage.TargetResourceMax : "",
+            TargetLevel: hotPage.HasOwnProp("TargetLevel") ? hotPage.TargetLevel : "",
+            TargetFlags: hotPage.HasOwnProp("TargetFlags") ? hotPage.TargetFlags : "",
+            PlayerDamageEstimate: hotPage.HasOwnProp("PlayerDamageEstimate") ? hotPage.PlayerDamageEstimate : "",
+            TargetDamageEstimate: hotPage.HasOwnProp("TargetDamageEstimate") ? hotPage.TargetDamageEstimate : "",
             SearchMode: details.HasOwnProp("SearchMode") ? details.SearchMode : "",
             BorderErrors: details.HasOwnProp("BorderErrors") ? details.BorderErrors : "",
             OriginX: details.HasOwnProp("OriginX") ? details.OriginX : "",
@@ -131,19 +147,35 @@ class BC_State {
             payloadUsedLength: BC_State.GetValue(latest, "PayloadUsedLength", ""),
             sampleMask: BC_State.GetValue(latest, "SampleMask", ""),
             stateFlags: BC_State.GetValue(latest, "StateFlags", ""),
-            resourceKindId: BC_State.GetValue(latest, "ResourceKindId", ""),
-            resourceKindName: BC_State.GetValue(latest, "ResourceKindName", ""),
-            healthCurrent: BC_State.GetValue(latest, "HealthCurrent", ""),
-            healthMax: BC_State.GetValue(latest, "HealthMax", ""),
-            resourceCurrent: BC_State.GetValue(latest, "ResourceCurrent", ""),
-            resourceMax: BC_State.GetValue(latest, "ResourceMax", ""),
-            castFlags: BC_State.GetValue(latest, "CastFlags", ""),
-            castProgressQ15: BC_State.GetValue(latest, "CastProgressQ15", ""),
-            level: BC_State.GetValue(latest, "Level", ""),
-            callingCode: BC_State.GetValue(latest, "CallingCode", ""),
-            callingName: BC_State.GetValue(latest, "CallingName", ""),
-            roleCode: BC_State.GetValue(latest, "RoleCode", ""),
-            roleName: BC_State.GetValue(latest, "RoleName", ""),
+            playerResourceKindId: BC_State.GetValue(latest, "PlayerResourceKindId", ""),
+            playerResourceKindName: BC_State.GetValue(latest, "PlayerResourceKindName", ""),
+            playerHealthCurrent: BC_State.GetValue(latest, "PlayerHealthCurrent", ""),
+            playerHealthMax: BC_State.GetValue(latest, "PlayerHealthMax", ""),
+            playerResourceCurrent: BC_State.GetValue(latest, "PlayerResourceCurrent", ""),
+            playerResourceMax: BC_State.GetValue(latest, "PlayerResourceMax", ""),
+            playerCastFlags: BC_State.GetValue(latest, "PlayerCastFlags", ""),
+            playerCastProgressQ15: BC_State.GetValue(latest, "PlayerCastProgressQ15", ""),
+            playerLevel: BC_State.GetValue(latest, "PlayerLevel", ""),
+            playerCallingCode: BC_State.GetValue(latest, "PlayerCallingCode", ""),
+            playerCallingName: BC_State.GetValue(latest, "PlayerCallingName", ""),
+            playerRoleCode: BC_State.GetValue(latest, "PlayerRoleCode", ""),
+            playerRoleName: BC_State.GetValue(latest, "PlayerRoleName", ""),
+            playerPowerAttack: BC_State.GetValue(latest, "PlayerPowerAttack", ""),
+            playerCritAttack: BC_State.GetValue(latest, "PlayerCritAttack", ""),
+            playerPowerSpell: BC_State.GetValue(latest, "PlayerPowerSpell", ""),
+            playerCritSpell: BC_State.GetValue(latest, "PlayerCritSpell", ""),
+            playerCritPower: BC_State.GetValue(latest, "PlayerCritPower", ""),
+            playerHit: BC_State.GetValue(latest, "PlayerHit", ""),
+            targetResourceKindId: BC_State.GetValue(latest, "TargetResourceKindId", ""),
+            targetResourceKindName: BC_State.GetValue(latest, "TargetResourceKindName", ""),
+            targetHealthCurrent: BC_State.GetValue(latest, "TargetHealthCurrent", ""),
+            targetHealthMax: BC_State.GetValue(latest, "TargetHealthMax", ""),
+            targetResourceCurrent: BC_State.GetValue(latest, "TargetResourceCurrent", ""),
+            targetResourceMax: BC_State.GetValue(latest, "TargetResourceMax", ""),
+            targetLevel: BC_State.GetValue(latest, "TargetLevel", ""),
+            targetFlags: BC_State.GetValue(latest, "TargetFlags", ""),
+            playerDamageEstimate: BC_State.GetValue(latest, "PlayerDamageEstimate", ""),
+            targetDamageEstimate: BC_State.GetValue(latest, "TargetDamageEstimate", ""),
             searchMode: BC_State.GetValue(latest, "SearchMode", ""),
             borderErrors: BC_State.GetValue(latest, "BorderErrors", ""),
             originX: BC_State.GetValue(latest, "OriginX", ""),
@@ -187,19 +219,35 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("payloadUsedLength", snapshot.payloadUsedLength))
         fields.Push(BC_State.JsonNumberField("sampleMask", snapshot.sampleMask))
         fields.Push(BC_State.JsonNumberField("stateFlags", snapshot.stateFlags))
-        fields.Push(BC_State.JsonNumberField("resourceKindId", snapshot.resourceKindId))
-        fields.Push(BC_State.JsonStringField("resourceKindName", snapshot.resourceKindName))
-        fields.Push(BC_State.JsonNumberField("healthCurrent", snapshot.healthCurrent))
-        fields.Push(BC_State.JsonNumberField("healthMax", snapshot.healthMax))
-        fields.Push(BC_State.JsonNumberField("resourceCurrent", snapshot.resourceCurrent))
-        fields.Push(BC_State.JsonNumberField("resourceMax", snapshot.resourceMax))
-        fields.Push(BC_State.JsonNumberField("castFlags", snapshot.castFlags))
-        fields.Push(BC_State.JsonNumberField("castProgressQ15", snapshot.castProgressQ15))
-        fields.Push(BC_State.JsonNumberField("level", snapshot.level))
-        fields.Push(BC_State.JsonNumberField("callingCode", snapshot.callingCode))
-        fields.Push(BC_State.JsonStringField("callingName", snapshot.callingName))
-        fields.Push(BC_State.JsonNumberField("roleCode", snapshot.roleCode))
-        fields.Push(BC_State.JsonStringField("roleName", snapshot.roleName))
+        fields.Push(BC_State.JsonNumberField("playerResourceKindId", snapshot.playerResourceKindId))
+        fields.Push(BC_State.JsonStringField("playerResourceKindName", snapshot.playerResourceKindName))
+        fields.Push(BC_State.JsonNumberField("playerHealthCurrent", snapshot.playerHealthCurrent))
+        fields.Push(BC_State.JsonNumberField("playerHealthMax", snapshot.playerHealthMax))
+        fields.Push(BC_State.JsonNumberField("playerResourceCurrent", snapshot.playerResourceCurrent))
+        fields.Push(BC_State.JsonNumberField("playerResourceMax", snapshot.playerResourceMax))
+        fields.Push(BC_State.JsonNumberField("playerCastFlags", snapshot.playerCastFlags))
+        fields.Push(BC_State.JsonNumberField("playerCastProgressQ15", snapshot.playerCastProgressQ15))
+        fields.Push(BC_State.JsonNumberField("playerLevel", snapshot.playerLevel))
+        fields.Push(BC_State.JsonNumberField("playerCallingCode", snapshot.playerCallingCode))
+        fields.Push(BC_State.JsonStringField("playerCallingName", snapshot.playerCallingName))
+        fields.Push(BC_State.JsonNumberField("playerRoleCode", snapshot.playerRoleCode))
+        fields.Push(BC_State.JsonStringField("playerRoleName", snapshot.playerRoleName))
+        fields.Push(BC_State.JsonNumberField("playerPowerAttack", snapshot.playerPowerAttack))
+        fields.Push(BC_State.JsonNumberField("playerCritAttack", snapshot.playerCritAttack))
+        fields.Push(BC_State.JsonNumberField("playerPowerSpell", snapshot.playerPowerSpell))
+        fields.Push(BC_State.JsonNumberField("playerCritSpell", snapshot.playerCritSpell))
+        fields.Push(BC_State.JsonNumberField("playerCritPower", snapshot.playerCritPower))
+        fields.Push(BC_State.JsonNumberField("playerHit", snapshot.playerHit))
+        fields.Push(BC_State.JsonNumberField("targetResourceKindId", snapshot.targetResourceKindId))
+        fields.Push(BC_State.JsonStringField("targetResourceKindName", snapshot.targetResourceKindName))
+        fields.Push(BC_State.JsonNumberField("targetHealthCurrent", snapshot.targetHealthCurrent))
+        fields.Push(BC_State.JsonNumberField("targetHealthMax", snapshot.targetHealthMax))
+        fields.Push(BC_State.JsonNumberField("targetResourceCurrent", snapshot.targetResourceCurrent))
+        fields.Push(BC_State.JsonNumberField("targetResourceMax", snapshot.targetResourceMax))
+        fields.Push(BC_State.JsonNumberField("targetLevel", snapshot.targetLevel))
+        fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
+        fields.Push(BC_State.JsonNumberField("playerDamageEstimate", snapshot.playerDamageEstimate))
+        fields.Push(BC_State.JsonNumberField("targetDamageEstimate", snapshot.targetDamageEstimate))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
         fields.Push(BC_State.JsonNumberField("borderErrors", snapshot.borderErrors))
         fields.Push(BC_State.JsonNumberField("originX", snapshot.originX))
@@ -246,15 +294,23 @@ class BC_State {
         lines.Push("Confidence: " BC_State.NumberText(snapshot.confidence))
         lines.Push("Sequence: " BC_State.NumberText(snapshot.sequence))
         lines.Push("PageId: " BC_State.NumberText(snapshot.pageId))
-        lines.Push("Health: " BC_State.PairText(snapshot.healthCurrent, snapshot.healthMax))
-        lines.Push("Resource: " BC_State.PairText(snapshot.resourceCurrent, snapshot.resourceMax))
-        lines.Push("ResourceKind: " snapshot.resourceKindName)
-        lines.Push("CastProgressQ15: " BC_State.NumberText(snapshot.castProgressQ15))
-        lines.Push("Level: " BC_State.NumberText(snapshot.level))
-        lines.Push("CallingCode: " BC_State.NumberText(snapshot.callingCode))
-        lines.Push("CallingName: " snapshot.callingName)
-        lines.Push("RoleCode: " BC_State.NumberText(snapshot.roleCode))
-        lines.Push("RoleName: " snapshot.roleName)
+        lines.Push("PlayerHealth: " BC_State.PairText(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
+        lines.Push("PlayerResource: " BC_State.PairText(snapshot.playerResourceCurrent, snapshot.playerResourceMax))
+        lines.Push("PlayerResourceKind: " snapshot.playerResourceKindName)
+        lines.Push("PlayerCastProgressQ15: " BC_State.NumberText(snapshot.playerCastProgressQ15))
+        lines.Push("PlayerLevel: " BC_State.NumberText(snapshot.playerLevel))
+        lines.Push("PlayerCallingCode: " BC_State.NumberText(snapshot.playerCallingCode))
+        lines.Push("PlayerCallingName: " snapshot.playerCallingName)
+        lines.Push("PlayerRoleCode: " BC_State.NumberText(snapshot.playerRoleCode))
+        lines.Push("PlayerRoleName: " snapshot.playerRoleName)
+        lines.Push("PlayerOffense: atk=" BC_State.NumberText(snapshot.playerPowerAttack) " critAtk=" BC_State.NumberText(snapshot.playerCritAttack) " spell=" BC_State.NumberText(snapshot.playerPowerSpell) " critSpell=" BC_State.NumberText(snapshot.playerCritSpell) " critPower=" BC_State.NumberText(snapshot.playerCritPower) " hit=" BC_State.NumberText(snapshot.playerHit))
+        lines.Push("TargetHealth: " BC_State.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax))
+        lines.Push("TargetResource: " BC_State.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax))
+        lines.Push("TargetResourceKind: " snapshot.targetResourceKindName)
+        lines.Push("TargetLevel: " BC_State.NumberText(snapshot.targetLevel))
+        lines.Push("TargetFlags: " BC_State.NumberText(snapshot.targetFlags))
+        lines.Push("PlayerDamageEstimate: " BC_State.NumberText(snapshot.playerDamageEstimate))
+        lines.Push("TargetDamageEstimate: " BC_State.NumberText(snapshot.targetDamageEstimate))
         lines.Push("SearchMode: " snapshot.searchMode)
         lines.Push("BorderErrors: " BC_State.NumberText(snapshot.borderErrors))
         lines.Push("Origin: " originText)
@@ -429,6 +485,9 @@ class BC_State {
         if (kindId = 4) {
             return "planar"
         }
+        if (kindId = 5) {
+            return "power"
+        }
         return "none"
     }
 
@@ -444,6 +503,9 @@ class BC_State {
         }
         if (code = 4) {
             return "warrior"
+        }
+        if (code = 5) {
+            return "primalist"
         }
         return "unknown"
     }

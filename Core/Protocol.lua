@@ -1,8 +1,8 @@
 -- script name: Core/Protocol.lua
--- version: 0.2.0
--- purpose: Defines the BC-Strip/1 live frame layout, page packing, and module matrix generation.
+-- version: 0.3.0
+-- purpose: Defines the BC-Strip/1 scoped player-target HUD frame layout, payload packing, and module matrix generation.
 -- dependencies: Core/Config.lua, Core/Pack.lua, Core/Gather.lua
--- important assumptions: Pass 2 implements schema-2 PlayerCoreHot while reserving page rotation slots for later passes.
+-- important assumptions: Pass 3 narrows the hot page to player/target HUD telemetry and leaves damage-estimate bytes reserved until a verified source exists.
 -- protocol version: BC-Strip/1
 -- framework module role: Core protocol definition
 -- character count note: Character count not precomputed; measure with tooling if needed.
@@ -11,8 +11,8 @@ BarCode = BarCode or {}
 BarCode.Protocol = {}
 
 BarCode.Protocol.PageIds = {
-  playerCoreHot = 0,
-  playerCoreCold = 1
+  hudHot = 0,
+  reservedCold = 1
 }
 
 BarCode.Protocol.FrameLayout = {
@@ -20,7 +20,7 @@ BarCode.Protocol.FrameLayout = {
   payloadBytes = 56,
   footerBytes = 8,
   totalBytes = 76,
-  hotPayloadUsedBytes = 24
+  hotPayloadUsedBytes = 54
 }
 
 function BarCode.Protocol.GetWitnessBytes(count)
@@ -37,23 +37,39 @@ function BarCode.Protocol.BuildHotPayloadBytes(snapshot)
 
   index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.sampleMask or 0)
   index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.stateFlags or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.resourceKindId or 0)
-  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.healthCurrent or 0)
-  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.healthMax or 0)
-  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.resourceCurrent or 0)
-  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.resourceMax or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.castFlags or 0)
-  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.castProgressQ15 or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.level or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.callingCode or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.roleCode or 0)
-  index = BarCode.Pack.PutUInt8(payloadBytes, index, 0)
+
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.playerResourceKindId or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.playerHealthCurrent or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.playerHealthMax or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.playerResourceCurrent or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.playerResourceMax or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.playerLevel or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.playerCallingCode or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.playerRoleCode or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.playerCastFlags or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerCastProgressQ15 or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerPowerAttack or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerCritAttack or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerPowerSpell or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerCritSpell or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerCritPower or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerHit or 0)
+
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.targetResourceKindId or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.targetHealthCurrent or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.targetHealthMax or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.targetResourceCurrent or 0)
+  index = BarCode.Pack.PutUInt24(payloadBytes, index, snapshot.targetResourceMax or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.targetLevel or 0)
+  index = BarCode.Pack.PutUInt8(payloadBytes, index, snapshot.targetFlags or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.playerDamageEstimate or 0)
+  index = BarCode.Pack.PutUInt16(payloadBytes, index, snapshot.targetDamageEstimate or 0)
 
   return payloadBytes, BarCode.Protocol.FrameLayout.hotPayloadUsedBytes
 end
 
 function BarCode.Protocol.BuildPayloadBytesForPage(pageId, snapshot)
-  if pageId == BarCode.Protocol.PageIds.playerCoreHot then
+  if pageId == BarCode.Protocol.PageIds.hudHot then
     return BarCode.Protocol.BuildHotPayloadBytes(snapshot)
   end
 
@@ -63,7 +79,7 @@ end
 function BarCode.Protocol.BuildLiveFrameBytes(snapshot, scheduleEntry)
   local config = BarCode.Config
   local profile = config.GetActiveProfile(snapshot.clientWidth, snapshot.clientHeight)
-  local pageId = scheduleEntry.pageId or BarCode.Protocol.PageIds.playerCoreHot
+  local pageId = scheduleEntry.pageId or BarCode.Protocol.PageIds.hudHot
   local sequence = scheduleEntry.sequence or 0
   local flags0 = snapshot.playerAvailable and 0x01 or 0x00
   local payloadBytes, payloadUsedLength = BarCode.Protocol.BuildPayloadBytesForPage(pageId, snapshot)

@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Protocol.ahk
-version: 0.2.0
-purpose: Implements BC-Strip/1 schema-2 transport packing, parsing, CRC, and module matrix construction for the reader smoke harness.
+version: 0.3.0
+purpose: Implements BC-Strip/1 schema-3 scoped player-target HUD transport packing, parsing, CRC, and module matrix construction.
 dependencies: DesktopAHK/Config.ahk
-important assumptions: Uses CRC-16/CCITT-FALSE, fixed P720A geometry, and a synthetic PlayerCoreHot sample for the minimum reader smoke.
+important assumptions: Uses CRC-16/CCITT-FALSE, fixed P720A geometry, and a synthetic player-target HUD sample for the reader smoke.
 protocol version: BC-Strip/1
 framework module role: Protocol definition
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -30,18 +30,33 @@ class BC_Protocol {
     static BuildSyntheticHotSnapshot() {
         return {
             PlayerAvailable: true,
-            SampleMask: 0x003F,
-            StateFlags: 0x001F,
-            ResourceKindId: 1,
-            HealthCurrent: 11770,
-            HealthMax: 11770,
-            ResourceCurrent: 4990,
-            ResourceMax: 4990,
-            CastFlags: 0x03,
-            CastProgressQ15: 16384,
-            Level: 47,
-            CallingCode: 1,
-            RoleCode: 1
+            SampleMask: 0xFFFF,
+            StateFlags: 0x01F7,
+            PlayerResourceKindId: 1,
+            PlayerHealthCurrent: 11770,
+            PlayerHealthMax: 11770,
+            PlayerResourceCurrent: 4990,
+            PlayerResourceMax: 4990,
+            PlayerLevel: 47,
+            PlayerCallingCode: 1,
+            PlayerRoleCode: 1,
+            PlayerCastFlags: 0x03,
+            PlayerCastProgressQ15: 16384,
+            PlayerPowerAttack: 1825,
+            PlayerCritAttack: 945,
+            PlayerPowerSpell: 2630,
+            PlayerCritSpell: 1185,
+            PlayerCritPower: 510,
+            PlayerHit: 425,
+            TargetResourceKindId: 1,
+            TargetHealthCurrent: 6320,
+            TargetHealthMax: 9110,
+            TargetResourceCurrent: 2120,
+            TargetResourceMax: 3500,
+            TargetLevel: 46,
+            TargetFlags: 0x01,
+            PlayerDamageEstimate: 0,
+            TargetDamageEstimate: 0
         }
     }
 
@@ -51,17 +66,31 @@ class BC_Protocol {
 
         index := BC_Protocol.PutUInt16(payload, index, snapshot.SampleMask)
         index := BC_Protocol.PutUInt16(payload, index, snapshot.StateFlags)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.ResourceKindId)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.HealthCurrent)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.HealthMax)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.ResourceCurrent)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.ResourceMax)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.CastFlags)
-        index := BC_Protocol.PutUInt16(payload, index, snapshot.CastProgressQ15)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.Level)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.CallingCode)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.RoleCode)
-        index := BC_Protocol.PutUInt8(payload, index, 0)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerResourceKindId)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.PlayerHealthCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.PlayerHealthMax)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.PlayerResourceCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.PlayerResourceMax)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerLevel)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerCallingCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerRoleCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerCastFlags)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCastProgressQ15)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerPowerAttack)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCritAttack)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerPowerSpell)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCritSpell)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCritPower)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerHit)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetResourceKindId)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthMax)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceMax)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetLevel)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetFlags)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerDamageEstimate)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.TargetDamageEstimate)
 
         return payload
     }
@@ -139,16 +168,31 @@ class BC_Protocol {
         return {
             SampleMask: BC_Protocol.ReadUInt16(bytes, payloadOffset),
             StateFlags: BC_Protocol.ReadUInt16(bytes, payloadOffset + 2),
-            ResourceKindId: bytes[payloadOffset + 4],
-            HealthCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 5),
-            HealthMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 8),
-            ResourceCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 11),
-            ResourceMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 14),
-            CastFlags: bytes[payloadOffset + 17],
-            CastProgressQ15: BC_Protocol.ReadUInt16(bytes, payloadOffset + 18),
-            Level: bytes[payloadOffset + 20],
-            CallingCode: bytes[payloadOffset + 21],
-            RoleCode: bytes[payloadOffset + 22]
+            PlayerResourceKindId: bytes[payloadOffset + 4],
+            PlayerHealthCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 5),
+            PlayerHealthMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 8),
+            PlayerResourceCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 11),
+            PlayerResourceMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 14),
+            PlayerLevel: bytes[payloadOffset + 17],
+            PlayerCallingCode: bytes[payloadOffset + 18],
+            PlayerRoleCode: bytes[payloadOffset + 19],
+            PlayerCastFlags: bytes[payloadOffset + 20],
+            PlayerCastProgressQ15: BC_Protocol.ReadUInt16(bytes, payloadOffset + 21),
+            PlayerPowerAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 23),
+            PlayerCritAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 25),
+            PlayerPowerSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 27),
+            PlayerCritSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 29),
+            PlayerCritPower: BC_Protocol.ReadUInt16(bytes, payloadOffset + 31),
+            PlayerHit: BC_Protocol.ReadUInt16(bytes, payloadOffset + 33),
+            TargetResourceKindId: bytes[payloadOffset + 35],
+            TargetHealthCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 36),
+            TargetHealthMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 39),
+            TargetResourceCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 42),
+            TargetResourceMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 45),
+            TargetLevel: bytes[payloadOffset + 48],
+            TargetFlags: bytes[payloadOffset + 49],
+            PlayerDamageEstimate: BC_Protocol.ReadUInt16(bytes, payloadOffset + 50),
+            TargetDamageEstimate: BC_Protocol.ReadUInt16(bytes, payloadOffset + 52)
         }
     }
 

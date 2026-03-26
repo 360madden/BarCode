@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Config.ahk
-version: 0.2.0
-purpose: Defines shared configuration values for the BarCode AHK reader smoke harness.
+version: 0.3.0
+purpose: Defines shared configuration values for the scoped BarCode player-target HUD reader harness.
 dependencies: AutoHotkey v2.0+
-important assumptions: The minimum reader smoke uses fixed-profile BC-Strip/1 geometry, but BMP decoding may need to solve a scaled top-left symbol panel inside a larger screenshot.
+important assumptions: The scoped BarCode reader uses fixed-profile BC-Strip/1 geometry, but BMP/live decoding may need to solve a scaled top-left symbol panel inside a larger screenshot.
 protocol version: BC-Strip/1
 framework module role: Desktop configuration
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -20,18 +20,18 @@ BC_ConfigResolveDataRoot() {
 
 class BC_Config {
     static AppName := "BarCode"
-    static AppVersion := "0.2.0"
+    static AppVersion := "0.3.0"
     static ProtocolVersion := 1
     static LayoutId := 1
     static ProfileId := 1
-    static SchemaId := 2
+    static SchemaId := 3
     static PageIdPlayerCoreHot := 0
     static PageIdPlayerCoreCold := 1
     static TransportBytes := 76
     static HeaderBytes := 12
     static PayloadBytes := 56
     static FooterBytes := 8
-    static HotPayloadUsedLength := 24
+    static HotPayloadUsedLength := 54
     static MaxBorderErrors := 12
     static SearchMinPitch := 4.00
     static SearchMaxPitch := 8.00

@@ -1,5 +1,5 @@
 -- script name: RIFT/Render.lua
--- version: 0.2.0
+-- version: 0.3.0
 -- purpose: Creates and updates the live BC-Strip/1 protocol band with a full-width reserved top band.
 -- dependencies: Core/Config.lua, Core/Protocol.lua, Core/Pack.lua, Core/Gather.lua, RIFT/Diagnostics.lua
 -- important assumptions: Assumes Frame:SetPoint, Frame:SetBackgroundColor, and Frame:SetVisible behave per current documented RIFT UI API.
@@ -61,6 +61,33 @@ function BarCode.Render.BuildStaticBorderPositions(profile)
   end
 
   return positions
+end
+
+function BarCode.Render.FrameBytesEqual(leftBytes, rightBytes)
+  local index
+
+  if leftBytes == nil or rightBytes == nil or #leftBytes ~= #rightBytes then
+    return false
+  end
+
+  for index = 1, #leftBytes do
+    if leftBytes[index] ~= rightBytes[index] then
+      return false
+    end
+  end
+
+  return true
+end
+
+function BarCode.Render.CopyFrameBytes(bytes)
+  local copy = {}
+  local index
+
+  for index = 1, #bytes do
+    copy[index] = bytes[index]
+  end
+
+  return copy
 end
 
 function BarCode.Render.InitializeLiveBand(rootFrame)
@@ -143,6 +170,7 @@ function BarCode.Render.InitializeLiveBand(rootFrame)
     borderFrames = borderFrames,
     dataFrames = dataFrames,
     lastBits = lastBits,
+    lastFrameBytes = nil,
     currentBandWidth = reservedBandWidth
   }
 end
@@ -161,11 +189,20 @@ function BarCode.Render.ApplyReservedBandWidth(renderState, clientWidth)
 end
 
 function BarCode.Render.UpdateLiveBand(renderState, snapshot, frameBytes)
+  BarCode.Render.ApplyReservedBandWidth(renderState, snapshot.clientWidth)
+
+  if BarCode.Render.FrameBytesEqual(renderState.lastFrameBytes, frameBytes) then
+    return {
+      changedCount = 0,
+      bitCount = #renderState.dataFrames,
+      bandWidth = renderState.currentBandWidth,
+      bytesUnchanged = true
+    }
+  end
+
   local bits = BarCode.Pack.BytesToBits(frameBytes)
   local changedCount = 0
   local index
-
-  BarCode.Render.ApplyReservedBandWidth(renderState, snapshot.clientWidth)
 
   for index = 1, #renderState.dataFrames do
     local bit = bits[index] or 0
@@ -176,10 +213,13 @@ function BarCode.Render.UpdateLiveBand(renderState, snapshot, frameBytes)
     end
   end
 
+  renderState.lastFrameBytes = BarCode.Render.CopyFrameBytes(frameBytes)
+
   return {
     changedCount = changedCount,
     bitCount = #renderState.dataFrames,
-    bandWidth = renderState.currentBandWidth
+    bandWidth = renderState.currentBandWidth,
+    bytesUnchanged = false
   }
 end
 

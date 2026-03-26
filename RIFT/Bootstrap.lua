@@ -1,5 +1,5 @@
 -- script name: RIFT/Bootstrap.lua
--- version: 0.2.0
+-- version: 0.3.0
 -- purpose: Initializes the BarCode RIFT integration, schedules live player telemetry frames, and updates the protocol band.
 -- dependencies: Core/Config.lua, Core/Gather.lua, Core/Scheduler.lua, Core/Protocol.lua, Core/Pack.lua, RIFT/Diagnostics.lua, RIFT/Render.lua
 -- important assumptions: Uses Event.Addon.Load.End, Event.System.Update.Begin, and Event.Unit.Castbar. Exact highest-safe strata remains unverified.
@@ -112,7 +112,7 @@ function BarCode.Bootstrap.Initialize()
   }
 
   BarCode.Diagnostics.LogLoaded()
-  BarCode.Diagnostics.Log("Initialized live schema-2 PlayerCoreHot telemetry.")
+  BarCode.Diagnostics.Log("Initialized live schema-3 player-target HUD telemetry.")
   BarCode.Diagnostics.Log("Root strata options: " .. BarCode.Diagnostics.DescribeStrataList(root))
   BarCode.Diagnostics.Log("Rendered profile: " .. renderState.profile.id)
   BarCode.Diagnostics.Log("Refresh cadence: " .. tostring(BarCode.Config.refreshIntervalSeconds) .. "s base / " .. tostring(BarCode.Config.refreshIntervalCastingSeconds) .. "s casting.")

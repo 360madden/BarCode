@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Capture.ahk
-version: 0.2.0
-purpose: Provides the minimum capture abstraction for the reader smoke by loading BMP inputs and returning a top search slice for scaled-panel solve when needed.
+version: 0.3.0
+purpose: Provides BMP and live window capture for the BarCode reader, including top-slice extraction for scaled panel solve.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk
-important assumptions: Live screen/window capture is intentionally deferred; this module loads 24-bit BMP inputs and keeps larger screenshots intact enough for scaled top-band detection.
+ important assumptions: BMP inputs may contain a larger screenshot around the strip, and live capture relies on normal Win32 desktop/window capture availability.
 protocol version: BC-Strip/1
 framework module role: Capture abstraction
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -37,6 +37,7 @@ class BC_Capture {
     static AcquireFromWindow(hwnd, cropX := 0, cropY := 0, sourcePreference := "auto") {
         client := BC_Capture.GetClientRectOnScreen(hwnd)
         profile := BC_Config.ProfileP720A()
+        isOccluded := false
 
         if (client.width <= cropX || client.height <= cropY) {
             throw Error("Requested live capture crop exceeds the RIFT client area.")
@@ -48,7 +49,8 @@ class BC_Capture {
         captureHeight := Min(client.height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
 
         if (sourcePreference = "auto") {
-            if (BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)) {
+            isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
+            if (isOccluded) {
                 if (BC_Capture.TryActivateWindow(hwnd)) {
                     Sleep 80
                     client := BC_Capture.GetClientRectOnScreen(hwnd)
@@ -56,11 +58,10 @@ class BC_Capture {
                     captureTop := client.y + cropY
                     captureWidth := client.width - cropX
                     captureHeight := Min(client.height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
+                    isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
                 }
 
-                sourcePreference := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
-                    ? "printwindow"
-                    : "screen"
+                sourcePreference := isOccluded ? "printwindow" : "screen"
             } else {
                 sourcePreference := "screen"
             }

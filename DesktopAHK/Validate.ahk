@@ -1,7 +1,7 @@
 /*
 script name: DesktopAHK/Validate.ahk
-version: 0.2.0
-purpose: Applies transport integrity checks and schema-2 hot-page extraction to decoded BC-Strip/1 frames.
+version: 0.3.0
+purpose: Applies transport integrity checks and schema-3 player-target HUD hot-page extraction to decoded BC-Strip/1 frames.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Interfaces.ahk, DesktopAHK/Protocol.ahk
 important assumptions: Rejects on any structural mismatch; this smoke harness does not attempt error correction or auto-detect profile changes.
 protocol version: BC-Strip/1

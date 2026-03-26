@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.2.0
-purpose: Entry point for the BC-Strip/1 reader smoke, BMP, and bounded live-capture harness.
+version: 0.3.0
+purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
-important assumptions: Default mode runs the synthetic schema-2 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
+important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
 protocol version: BC-Strip/1
 framework module role: Desktop entry point
 character count note: Character count not precomputed; measure with tooling if needed.

@@ -1,7 +1,7 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.2.0
-purpose: Runs the minimum schema-2 reader smoke for BC-Strip/1 using synthetic and fixed-BMP inputs.
+version: 0.3.0
+purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
 protocol version: BC-Strip/1
@@ -35,7 +35,7 @@ class BC_Tests {
 
         success := goodResult.Validation.IsAccepted && !corruptResult.Validation.IsAccepted
         reportLines := []
-        reportLines.Push("BarCode phase 2 reader smoke report")
+        reportLines.Push("BarCode schema-3 reader smoke report")
         reportLines.Push("Success: " BC_Tests.BoolText(success))
         reportLines.Push("Good fixture: " BC_Config.GoodFixturePath)
         reportLines.Push("Corrupt fixture: " BC_Config.CorruptFixturePath)
@@ -46,9 +46,14 @@ class BC_Tests {
         reportLines.Push("Good sequence: " goodResult.Validation.Details.Transport.Sequence)
         reportLines.Push("Good page id: " goodResult.Validation.Details.Transport.PageId)
         reportLines.Push("Good payload length: " goodResult.Validation.Details.Transport.PayloadUsedLength)
-        reportLines.Push("Good health: " goodResult.Validation.Details.HotPage.HealthCurrent "/" goodResult.Validation.Details.HotPage.HealthMax)
-        reportLines.Push("Good resource: " goodResult.Validation.Details.HotPage.ResourceCurrent "/" goodResult.Validation.Details.HotPage.ResourceMax)
-        reportLines.Push("Good cast progress q15: " goodResult.Validation.Details.HotPage.CastProgressQ15)
+        reportLines.Push("Good player health: " goodResult.Validation.Details.HotPage.PlayerHealthCurrent "/" goodResult.Validation.Details.HotPage.PlayerHealthMax)
+        reportLines.Push("Good player resource: " goodResult.Validation.Details.HotPage.PlayerResourceCurrent "/" goodResult.Validation.Details.HotPage.PlayerResourceMax)
+        reportLines.Push("Good player cast progress q15: " goodResult.Validation.Details.HotPage.PlayerCastProgressQ15)
+        reportLines.Push("Good player level/calling/role: " goodResult.Validation.Details.HotPage.PlayerLevel "/" goodResult.Validation.Details.HotPage.PlayerCallingCode "/" goodResult.Validation.Details.HotPage.PlayerRoleCode)
+        reportLines.Push("Good player offense: atk=" goodResult.Validation.Details.HotPage.PlayerPowerAttack " critAtk=" goodResult.Validation.Details.HotPage.PlayerCritAttack " spell=" goodResult.Validation.Details.HotPage.PlayerPowerSpell " critSpell=" goodResult.Validation.Details.HotPage.PlayerCritSpell " critPower=" goodResult.Validation.Details.HotPage.PlayerCritPower " hit=" goodResult.Validation.Details.HotPage.PlayerHit)
+        reportLines.Push("Good target health: " goodResult.Validation.Details.HotPage.TargetHealthCurrent "/" goodResult.Validation.Details.HotPage.TargetHealthMax)
+        reportLines.Push("Good target resource: " goodResult.Validation.Details.HotPage.TargetResourceCurrent "/" goodResult.Validation.Details.HotPage.TargetResourceMax)
+        reportLines.Push("Good target level/flags: " goodResult.Validation.Details.HotPage.TargetLevel "/" goodResult.Validation.Details.HotPage.TargetFlags)
         reportLines.Push("Good sample mask: 0x" Format("{:04X}", goodResult.Validation.Details.HotPage.SampleMask))
         reportLines.Push("Good state flags: 0x" Format("{:04X}", goodResult.Validation.Details.HotPage.StateFlags))
         reportLines.Push("Good confidence: " goodResult.Validation.Confidence)
@@ -94,12 +99,17 @@ class BC_Tests {
         }
 
         if (details.HasOwnProp("HotPage")) {
-            reportLines.Push("Health: " details.HotPage.HealthCurrent "/" details.HotPage.HealthMax)
-            reportLines.Push("Resource: " details.HotPage.ResourceCurrent "/" details.HotPage.ResourceMax)
-            reportLines.Push("CastProgressQ15: " details.HotPage.CastProgressQ15)
-            reportLines.Push("Level: " details.HotPage.Level)
-            reportLines.Push("CallingCode: " details.HotPage.CallingCode)
-            reportLines.Push("RoleCode: " details.HotPage.RoleCode)
+            reportLines.Push("PlayerHealth: " details.HotPage.PlayerHealthCurrent "/" details.HotPage.PlayerHealthMax)
+            reportLines.Push("PlayerResource: " details.HotPage.PlayerResourceCurrent "/" details.HotPage.PlayerResourceMax)
+            reportLines.Push("PlayerCastProgressQ15: " details.HotPage.PlayerCastProgressQ15)
+            reportLines.Push("PlayerLevel: " details.HotPage.PlayerLevel)
+            reportLines.Push("PlayerCallingCode: " details.HotPage.PlayerCallingCode)
+            reportLines.Push("PlayerRoleCode: " details.HotPage.PlayerRoleCode)
+            reportLines.Push("PlayerOffense: atk=" details.HotPage.PlayerPowerAttack " critAtk=" details.HotPage.PlayerCritAttack " spell=" details.HotPage.PlayerPowerSpell " critSpell=" details.HotPage.PlayerCritSpell " critPower=" details.HotPage.PlayerCritPower " hit=" details.HotPage.PlayerHit)
+            reportLines.Push("TargetHealth: " details.HotPage.TargetHealthCurrent "/" details.HotPage.TargetHealthMax)
+            reportLines.Push("TargetResource: " details.HotPage.TargetResourceCurrent "/" details.HotPage.TargetResourceMax)
+            reportLines.Push("TargetLevel: " details.HotPage.TargetLevel)
+            reportLines.Push("TargetFlags: " details.HotPage.TargetFlags)
         }
 
         reportLines.Push("Confidence: " validation.Confidence)
@@ -199,13 +209,18 @@ class BC_Tests {
             reportLines.Push("LastSequence: " transport.Sequence)
             reportLines.Push("LastPageId: " transport.PageId)
         }
-        if (hotPage.HasOwnProp("HealthCurrent")) {
-            reportLines.Push("Health: " hotPage.HealthCurrent "/" hotPage.HealthMax)
-            reportLines.Push("Resource: " hotPage.ResourceCurrent "/" hotPage.ResourceMax)
-            reportLines.Push("CastProgressQ15: " hotPage.CastProgressQ15)
-            reportLines.Push("Level: " hotPage.Level)
-            reportLines.Push("CallingCode: " hotPage.CallingCode)
-            reportLines.Push("RoleCode: " hotPage.RoleCode)
+        if (hotPage.HasOwnProp("PlayerHealthCurrent")) {
+            reportLines.Push("PlayerHealth: " hotPage.PlayerHealthCurrent "/" hotPage.PlayerHealthMax)
+            reportLines.Push("PlayerResource: " hotPage.PlayerResourceCurrent "/" hotPage.PlayerResourceMax)
+            reportLines.Push("PlayerCastProgressQ15: " hotPage.PlayerCastProgressQ15)
+            reportLines.Push("PlayerLevel: " hotPage.PlayerLevel)
+            reportLines.Push("PlayerCallingCode: " hotPage.PlayerCallingCode)
+            reportLines.Push("PlayerRoleCode: " hotPage.PlayerRoleCode)
+            reportLines.Push("PlayerOffense: atk=" hotPage.PlayerPowerAttack " critAtk=" hotPage.PlayerCritAttack " spell=" hotPage.PlayerPowerSpell " critSpell=" hotPage.PlayerCritSpell " critPower=" hotPage.PlayerCritPower " hit=" hotPage.PlayerHit)
+            reportLines.Push("TargetHealth: " hotPage.TargetHealthCurrent "/" hotPage.TargetHealthMax)
+            reportLines.Push("TargetResource: " hotPage.TargetResourceCurrent "/" hotPage.TargetResourceMax)
+            reportLines.Push("TargetLevel: " hotPage.TargetLevel)
+            reportLines.Push("TargetFlags: " hotPage.TargetFlags)
         }
         reportLines.Push("Decoded bytes[1..16]: " BC_Debug.Hex(lastResult.Decode.Bytes, 1, 16))
         reportLines.Push("LastCaptureBmp: " BC_Config.LiveCaptureBmpPath)
