@@ -29,7 +29,7 @@ function BarCode.Bootstrap.GetRefreshInterval()
   return BarCode.Config.refreshIntervalSeconds
 end
 
-function BarCode.Bootstrap.RefreshTelemetry(forceRefresh)
+function BarCode.Bootstrap.RefreshTelemetry(forceRefresh, refreshReason)
   local state = BarCode.Bootstrap.state
   local now = BarCode.Bootstrap.GetRealtimeNow()
   local refreshInterval = BarCode.Bootstrap.GetRefreshInterval()
@@ -52,12 +52,16 @@ function BarCode.Bootstrap.RefreshTelemetry(forceRefresh)
   state.lastSnapshot = snapshot
   state.lastFrameMeta = frameMeta
   state.lastRenderMetrics = renderMetrics
+
+  if snapshot.debugProbe ~= nil then
+    BarCode.Diagnostics.LogGatherProbe(snapshot.debugProbe, refreshReason)
+  end
 end
 
-function BarCode.Bootstrap.SafeRefreshTelemetry(forceRefresh)
+function BarCode.Bootstrap.SafeRefreshTelemetry(forceRefresh, refreshReason)
   local state = BarCode.Bootstrap.state
   local ok, failureMessage = pcall(function()
-    BarCode.Bootstrap.RefreshTelemetry(forceRefresh)
+    BarCode.Bootstrap.RefreshTelemetry(forceRefresh, refreshReason)
   end)
 
   if ok then
@@ -113,7 +117,7 @@ function BarCode.Bootstrap.Initialize()
   BarCode.Diagnostics.Log("Rendered profile: " .. renderState.profile.id)
   BarCode.Diagnostics.Log("Refresh cadence: " .. tostring(BarCode.Config.refreshIntervalSeconds) .. "s base / " .. tostring(BarCode.Config.refreshIntervalCastingSeconds) .. "s casting.")
 
-  BarCode.Bootstrap.SafeRefreshTelemetry(true)
+  BarCode.Bootstrap.SafeRefreshTelemetry(true, "initialize")
 end
 
 function BarCode.Bootstrap.OnLoadEnd(_, loadedAddonIdentifier)
@@ -136,7 +140,7 @@ function BarCode.Bootstrap.OnUpdateBegin()
     return
   end
 
-  BarCode.Bootstrap.SafeRefreshTelemetry(false)
+  BarCode.Bootstrap.SafeRefreshTelemetry(false, "update")
 end
 
 function BarCode.Bootstrap.OnCastbarChanged()
@@ -145,7 +149,7 @@ function BarCode.Bootstrap.OnCastbarChanged()
   end
 
   BarCode.Bootstrap.state.lastRefreshAt = 0
-  BarCode.Bootstrap.SafeRefreshTelemetry(true)
+  BarCode.Bootstrap.SafeRefreshTelemetry(true, "castbar")
 end
 
 Command.Event.Attach(
