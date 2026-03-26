@@ -1,5 +1,5 @@
 -- script name: Core/Config.lua
--- version: 0.3.0
+-- version: 0.3.1
 -- purpose: Defines shared BarCode constants, colors, profiles, transport sizes, and scoped player-target HUD telemetry options.
 -- dependencies: None. Loaded before other BarCode Lua modules.
 -- important assumptions: Pass 3 keeps BC-Strip/1 geometry fixed while narrowing the product scope to player/target HUD telemetry.
@@ -10,7 +10,7 @@
 BarCode = BarCode or {}
 BarCode.Config = {
   addonIdentifier = "BarCode",
-  addonVersion = "0.3.0",
+  addonVersion = "0.3.1",
   protocolVersion = 1,
   layoutId = 1,
   schemaId = 3,
@@ -20,6 +20,9 @@ BarCode.Config = {
   chatColorHex = "#4DEAFF",
   probeLoggingEnabled = true,
   probeLoggingMaxEvents = 16,
+  validationLoggingEnabled = true,
+  validationLogMaxEvents = 16,
+  validationSummaryMaxIssues = 4,
   castbarCacheSeconds = 0.75,
   refreshIntervalSeconds = 0.10,
   refreshIntervalCastingSeconds = 0.05,

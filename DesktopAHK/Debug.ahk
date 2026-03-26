@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Debug.ahk
-version: 0.1.0
+version: 0.3.0
 purpose: Provides BMP IO and compact reporting helpers for the BarCode AHK harness.
 dependencies: AutoHotkey v2.0+
-important assumptions: Supports uncompressed 24-bit BMP files only in phase 1.
+important assumptions: Supports uncompressed 24-bit BMP files only and treats malformed/truncated BMP input as a hard failure.
 protocol version: BC-Strip/1
 framework module role: Debug and fixture support
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -107,7 +107,11 @@ class BC_Debug {
 
     static ReadBmp24(path) {
         raw := FileRead(path, "RAW")
-        if (StrGet(raw.Ptr, 2, "CP0") != "BM") {
+        if (raw.Size < 54) {
+            throw Error("BMP is too small to contain a valid header: " path)
+        }
+
+        if (NumGet(raw, 0, "UChar") != Ord("B") || NumGet(raw, 1, "UChar") != Ord("M")) {
             throw Error("Unsupported bitmap signature: " path)
         }
 
@@ -129,8 +133,17 @@ class BC_Debug {
 
         topDown := height < 0
         absHeight := Abs(height)
+        if (width <= 0 || absHeight <= 0) {
+            throw Error("BMP dimensions must be positive: " width "x" height)
+        }
+
         rowStride := width * 3
         paddedStride := rowStride + Mod(4 - Mod(rowStride, 4), 4)
+        requiredBytes := pixelOffset + (paddedStride * absHeight)
+        if (pixelOffset < 54 || requiredBytes > raw.Size) {
+            throw Error("BMP pixel data is truncated or has an invalid offset: " path)
+        }
+
         pixels := Buffer(rowStride * absHeight, 0)
 
         row := 0

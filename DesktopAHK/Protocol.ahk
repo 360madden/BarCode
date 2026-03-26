@@ -10,6 +10,21 @@ character count note: Character count not precomputed; measure with tooling if n
 */
 
 class BC_Protocol {
+    static ClampUnsigned(value, maxValue) {
+        try {
+            numeric := Integer(value)
+        } catch {
+            numeric := 0
+        }
+        if (numeric < 0) {
+            return 0
+        }
+        if (numeric > maxValue) {
+            return maxValue
+        }
+        return numeric
+    }
+
     static GetProfile(profileId := "P720A") {
         if (profileId != "P720A") {
             throw Error("Unsupported profile in reader smoke: " profileId)
@@ -269,20 +284,22 @@ class BC_Protocol {
     }
 
     static PutUInt8(bytes, index, value) {
-        bytes[index] := value & 0xFF
+        bytes[index] := BC_Protocol.ClampUnsigned(value, 0xFF) & 0xFF
         return index + 1
     }
 
     static PutUInt16(bytes, index, value) {
-        bytes[index] := (value >> 8) & 0xFF
-        bytes[index + 1] := value & 0xFF
+        clamped := BC_Protocol.ClampUnsigned(value, 0xFFFF)
+        bytes[index] := (clamped >> 8) & 0xFF
+        bytes[index + 1] := clamped & 0xFF
         return index + 2
     }
 
     static PutUInt24(bytes, index, value) {
-        bytes[index] := (value >> 16) & 0xFF
-        bytes[index + 1] := (value >> 8) & 0xFF
-        bytes[index + 2] := value & 0xFF
+        clamped := BC_Protocol.ClampUnsigned(value, 0xFFFFFF)
+        bytes[index] := (clamped >> 16) & 0xFF
+        bytes[index + 1] := (clamped >> 8) & 0xFF
+        bytes[index + 2] := clamped & 0xFF
         return index + 3
     }
 

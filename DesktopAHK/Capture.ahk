@@ -132,6 +132,10 @@ class BC_Capture {
                 }
             }
 
+            if (processName != "") {
+                return false
+            }
+
             title := StrLower(WinGetTitle("ahk_id " hwnd))
             for _, preferredTitle in BC_Capture.PreferredWindowTitles {
                 if (preferredTitle != "" && InStr(title, StrLower(preferredTitle))) {

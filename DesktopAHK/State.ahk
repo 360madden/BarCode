@@ -339,6 +339,62 @@ class BC_State {
         return BC_Debug.Join(lines, "`r`n")
     }
 
+    static BuildSnapshotSummary(snapshot) {
+        acceptedText := snapshot.accepted ? "OK" : "BAD"
+        sequenceText := BC_State.NumberText(snapshot.sequence)
+        if (sequenceText = "") {
+            sequenceText := "-"
+        }
+
+        confidenceText := BC_State.NumberText(snapshot.confidence)
+        if (confidenceText = "") {
+            confidenceText := "-"
+        }
+
+        reasonText := snapshot.reason != "" ? snapshot.reason : "-"
+        return (
+            snapshot.timestampUtc
+            " | " acceptedText
+            " | seq " sequenceText
+            " | conf " confidenceText
+            " | " reasonText
+        )
+    }
+
+    static GetRecentHistory(limit := 8) {
+        history := BC_State.EnsureHistory()
+        items := []
+        if (limit <= 0) {
+            return items
+        }
+
+        startIndex := history.Length - limit + 1
+        if (startIndex < 1) {
+            startIndex := 1
+        }
+
+        index := startIndex
+        while (index <= history.Length) {
+            items.Push(history[index])
+            index += 1
+        }
+
+        return items
+    }
+
+    static BuildRecentHistoryText(limit := 8) {
+        entries := BC_State.GetRecentHistory(limit)
+        if (entries.Length = 0) {
+            return "No recent samples."
+        }
+
+        lines := []
+        for _, snapshot in entries {
+            lines.Push(BC_State.BuildSnapshotSummary(snapshot))
+        }
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
     static BuildEmptySession() {
         return {
             SessionStartedUtc: A_NowUTC,

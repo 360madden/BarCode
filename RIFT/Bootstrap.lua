@@ -1,5 +1,5 @@
 -- script name: RIFT/Bootstrap.lua
--- version: 0.3.0
+-- version: 0.3.1
 -- purpose: Initializes the BarCode RIFT integration, schedules live player telemetry frames, and updates the protocol band.
 -- dependencies: Core/Config.lua, Core/Gather.lua, Core/Scheduler.lua, Core/Protocol.lua, Core/Pack.lua, RIFT/Diagnostics.lua, RIFT/Render.lua
 -- important assumptions: Uses Event.Addon.Load.End, Event.System.Update.Begin, and Event.Unit.Castbar. Exact highest-safe strata remains unverified.
@@ -43,6 +43,7 @@ function BarCode.Bootstrap.RefreshTelemetry(forceRefresh, refreshReason)
   end
 
   local snapshot = BarCode.Gather.BuildPlayerSnapshot()
+  local validation = BarCode.Gather.ValidateSnapshot(snapshot)
   local scheduleEntry = BarCode.Scheduler.NextFrame(state.scheduler)
   local frameBytes, frameMeta = BarCode.Protocol.BuildLiveFrameBytes(snapshot, scheduleEntry)
   local renderMetrics = BarCode.Render.UpdateLiveBand(state.render, snapshot, frameBytes)
@@ -50,8 +51,13 @@ function BarCode.Bootstrap.RefreshTelemetry(forceRefresh, refreshReason)
   state.lastRefreshAt = now
   state.currentCastActive = snapshot.castActive and true or false
   state.lastSnapshot = snapshot
+  state.lastValidation = validation
   state.lastFrameMeta = frameMeta
   state.lastRenderMetrics = renderMetrics
+
+  if validation ~= nil then
+    BarCode.Diagnostics.LogSnapshotValidation(validation, refreshReason)
+  end
 
   if snapshot.debugProbe ~= nil then
     BarCode.Diagnostics.LogGatherProbe(snapshot.debugProbe, refreshReason)
@@ -106,6 +112,7 @@ function BarCode.Bootstrap.Initialize()
     lastRefreshAt = 0,
     currentCastActive = false,
     lastSnapshot = nil,
+    lastValidation = nil,
     lastFrameMeta = nil,
     lastRenderMetrics = nil,
     lastRefreshError = nil

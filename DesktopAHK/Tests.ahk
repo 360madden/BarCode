@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.0
+version: 0.3.1
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -10,6 +10,69 @@ character count note: Character count not precomputed; measure with tooling if n
 */
 
 class BC_Tests {
+    static BuildUnavailableResult(reason, sourceKind := "unavailable", searchMode := "unavailable") {
+        profile := BC_Protocol.GetProfile()
+        details := {
+            BorderErrors: 0,
+            Threshold: 0,
+            BlackMean: 0,
+            WhiteMean: 0,
+            MinMargin: 0,
+            OriginX: 0,
+            OriginY: 0,
+            Pitch: 0,
+            BandWidth: profile.BandWidth,
+            BandHeight: profile.BandHeight,
+            SearchMode: searchMode,
+            Contrast: 0
+        }
+        image := {
+            Width: profile.BandWidth,
+            Height: profile.BandHeight,
+            Pixels: Buffer(profile.BandWidth * profile.BandHeight * 3, 0),
+            SourceKind: sourceKind
+        }
+        detection := BC_Interfaces.DetectionResult(profile, 0, 0, 0, 0, reason, 0, 0, 0, profile.BandWidth, profile.BandHeight, 0, searchMode)
+        decodeResult := BC_Interfaces.DecodeResult([], 0, 0, 0)
+        validation := BC_Interfaces.ValidationResult(false, reason, 0.0, details)
+        context := {
+            Image: image,
+            Timings: {
+                CaptureMs: 0,
+                PipelineMs: 0,
+                AttemptCount: 0
+            },
+            CaptureAttempts: [sourceKind]
+        }
+
+        BC_State.Update(validation, context)
+        BC_State.WriteSnapshot()
+
+        return {
+            Image: image,
+            Detection: detection,
+            Decode: decodeResult,
+            Validation: validation,
+            Timings: context.Timings,
+            CaptureAttempts: context.CaptureAttempts
+        }
+    }
+
+    static DecodeSyntheticHot(sequence := 42) {
+        profile := BC_Protocol.GetProfile()
+        snapshot := BC_Protocol.BuildSyntheticHotSnapshot()
+        expectedBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, sequence, BC_Config.PageIdPlayerCoreHot)
+        matrix := BC_Protocol.BuildModuleMatrix(profile, expectedBytes)
+        pixels := BC_Tests.RenderMatrixToPixels(profile, matrix)
+
+        return BC_Tests.DecodeImage({
+            Width: profile.BandWidth,
+            Height: profile.BandHeight,
+            Pixels: pixels,
+            SourceKind: "synthetic"
+        })
+    }
+
     static RunReaderSmoke() {
         BC_Debug.WriteText(BC_Debug.TracePath(), "tests.run:start`r`n")
 

@@ -1,5 +1,5 @@
 -- script name: Core/Gather.lua
--- version: 0.3.0
+-- version: 0.3.1
 -- purpose: Gathers and normalizes the scoped player-target HUD telemetry snapshot for BarCode.
 -- dependencies: Core/Config.lua
 -- important assumptions: Uses locally precedent-backed Inspect.Unit.Detail/Lookup/Castbar and Inspect.Stat fields; damage-estimate bytes remain reserved until a verified source exists.
@@ -393,6 +393,22 @@ function BarCode.Gather.ResolveRole(player)
   )
 end
 
+function BarCode.Gather.GetTemporaryRole()
+  if Inspect == nil or Inspect.TEMPORARY == nil or Inspect.TEMPORARY.Role == nil then
+    return nil
+  end
+
+  local ok, value = pcall(function()
+    return Inspect.TEMPORARY.Role()
+  end)
+
+  if not ok then
+    return nil
+  end
+
+  return value
+end
+
 function BarCode.Gather.GetPreferredResourceKind(callingCode)
   if callingCode == 1 or callingCode == 3 then
     return BarCode.Gather.ResourceKind.mana
@@ -630,6 +646,9 @@ function BarCode.Gather.BuildPlayerSnapshot()
   local cast = BarCode.Gather.BuildCastbarSnapshot()
   local callingCode, callingRaw = BarCode.Gather.ResolveCalling(player)
   local roleCode, roleRaw = BarCode.Gather.ResolveRole(player)
+  if roleCode == 0 then
+    roleCode, roleRaw = MatchTokenCode(BarCode.Gather.RoleTokens, BarCode.Gather.GetTemporaryRole())
+  end
   local targetCallingCode, targetCallingRaw = BarCode.Gather.ResolveCalling(target)
   local playerResource = BarCode.Gather.SelectPrimaryResource(player, callingCode)
   local targetResource = BarCode.Gather.SelectPrimaryResource(target, targetCallingCode)
@@ -790,6 +809,239 @@ function BarCode.Gather.BuildPlayerSnapshot()
       targetUnitId
     )
   }
+end
+
+local function IsFilledText(value)
+  return value ~= nil and tostring(value) ~= ""
+end
+
+local function HasFlag(value, flag)
+  local number = math.floor(tonumber(value) or 0)
+  local divisor = math.floor(flag or 0)
+
+  if divisor <= 0 then
+    return false
+  end
+
+  return math.fmod(math.floor(number / divisor), 2) == 1
+end
+
+local function AddValidationIssue(report, severity, code, field, message, value)
+  local issue = {
+    severity = severity,
+    code = code,
+    field = field,
+    message = message,
+    value = value
+  }
+
+  report.issues[#report.issues + 1] = issue
+  report.issueCount = report.issueCount + 1
+
+  if severity == "error" then
+    report.errorCount = report.errorCount + 1
+  else
+    report.warningCount = report.warningCount + 1
+    report.suspicious = true
+  end
+end
+
+local function AddError(report, code, field, message, value)
+  AddValidationIssue(report, "error", code, field, message, value)
+end
+
+local function AddWarning(report, code, field, message, value)
+  AddValidationIssue(report, "warning", code, field, message, value)
+end
+
+local function EmptyTargetData(snapshot)
+  local debugProbe = snapshot.debugProbe or {}
+
+  return not (
+    (tonumber(snapshot.targetHealthCurrent) or 0) > 0
+    or (tonumber(snapshot.targetHealthMax) or 0) > 0
+    or (tonumber(snapshot.targetResourceCurrent) or 0) > 0
+    or (tonumber(snapshot.targetResourceMax) or 0) > 0
+    or (tonumber(snapshot.targetLevel) or 0) > 0
+    or (tonumber(snapshot.targetFlags) or 0) > 0
+    or (tonumber(snapshot.targetResourceKindId) or 0) > 0
+    or IsFilledText(debugProbe.targetName)
+    or IsFilledText(debugProbe.targetUnitId)
+  )
+end
+
+function BarCode.Gather.ValidateSnapshot(snapshot)
+  local report = {
+    valid = true,
+    suspicious = false,
+    errorCount = 0,
+    warningCount = 0,
+    issueCount = 0,
+    issues = {},
+    summary = ""
+  }
+
+  local debugProbe = {}
+  local stateFlags = 0
+  local playerAvailable = false
+  local playerHealthCurrent = 0
+  local playerHealthMax = 0
+  local playerResourceKindId = 0
+  local playerResourceCurrent = 0
+  local playerResourceMax = 0
+  local playerCastFlags = 0
+  local playerCastProgressQ15 = 0
+  local playerCallingCode = 0
+  local playerRoleCode = 0
+  local targetHealthCurrent = 0
+  local targetHealthMax = 0
+  local targetResourceKindId = 0
+  local targetResourceCurrent = 0
+  local targetResourceMax = 0
+  local targetLevel = 0
+  local targetFlags = 0
+  local castActive = false
+
+  if type(snapshot) ~= "table" then
+    AddError(report, "snapshot-type", "snapshot", "Snapshot was not a table.", type(snapshot))
+    report.valid = false
+    report.suspicious = true
+    report.summary = "errors=1 warnings=0"
+    return report
+  end
+
+  debugProbe = snapshot.debugProbe or {}
+  stateFlags = math.floor(tonumber(snapshot.stateFlags) or 0)
+  playerAvailable = snapshot.playerAvailable and true or false
+  playerHealthCurrent = math.floor(tonumber(snapshot.playerHealthCurrent) or 0)
+  playerHealthMax = math.floor(tonumber(snapshot.playerHealthMax) or 0)
+  playerResourceKindId = math.floor(tonumber(snapshot.playerResourceKindId) or 0)
+  playerResourceCurrent = math.floor(tonumber(snapshot.playerResourceCurrent) or 0)
+  playerResourceMax = math.floor(tonumber(snapshot.playerResourceMax) or 0)
+  playerCastFlags = math.floor(tonumber(snapshot.playerCastFlags) or 0)
+  playerCastProgressQ15 = math.floor(tonumber(snapshot.playerCastProgressQ15) or 0)
+  playerCallingCode = math.floor(tonumber(snapshot.playerCallingCode) or 0)
+  playerRoleCode = math.floor(tonumber(snapshot.playerRoleCode) or 0)
+  targetHealthCurrent = math.floor(tonumber(snapshot.targetHealthCurrent) or 0)
+  targetHealthMax = math.floor(tonumber(snapshot.targetHealthMax) or 0)
+  targetResourceKindId = math.floor(tonumber(snapshot.targetResourceKindId) or 0)
+  targetResourceCurrent = math.floor(tonumber(snapshot.targetResourceCurrent) or 0)
+  targetResourceMax = math.floor(tonumber(snapshot.targetResourceMax) or 0)
+  targetLevel = math.floor(tonumber(snapshot.targetLevel) or 0)
+  targetFlags = math.floor(tonumber(snapshot.targetFlags) or 0)
+  castActive = snapshot.castActive and true or false
+
+  if playerAvailable ~= HasFlag(stateFlags, BarCode.Gather.StateBits.playerAvailable) then
+    AddError(report, "player-available-bit", "stateFlags", "Player availability bit disagrees with the snapshot flag.", stateFlags)
+  end
+
+  if HasFlag(stateFlags, BarCode.Gather.StateBits.playerAlive) and playerHealthCurrent <= 0 then
+    AddWarning(report, "player-alive-empty-health", "playerHealthCurrent", "Player is flagged alive but has no health value.", playerHealthCurrent)
+  end
+
+  if playerHealthCurrent > playerHealthMax and playerHealthMax > 0 then
+    AddError(report, "player-health-order", "playerHealthCurrent", "Player health current exceeds max.", playerHealthCurrent .. "/" .. playerHealthMax)
+  end
+
+  if playerHealthCurrent > 0 and playerHealthMax <= 0 then
+    AddError(report, "player-health-max-missing", "playerHealthMax", "Player health current is present but max is missing or zero.", playerHealthCurrent .. "/" .. playerHealthMax)
+  end
+
+  if playerResourceCurrent > playerResourceMax and playerResourceMax > 0 then
+    AddError(report, "player-resource-order", "playerResourceCurrent", "Player resource current exceeds max.", playerResourceCurrent .. "/" .. playerResourceMax)
+  end
+
+  if playerResourceCurrent > 0 and playerResourceMax <= 0 then
+    AddError(report, "player-resource-max-missing", "playerResourceMax", "Player resource current is present but max is missing or zero.", playerResourceCurrent .. "/" .. playerResourceMax)
+  end
+
+  if playerResourceKindId == BarCode.Gather.ResourceKind.none and HasFlag(stateFlags, BarCode.Gather.StateBits.playerResourceAvailable) then
+    AddError(report, "player-resource-bit", "playerResourceKindId", "Player resource bit is set but no resource kind was selected.", playerResourceKindId)
+  end
+
+  if playerResourceKindId ~= BarCode.Gather.ResourceKind.none and not HasFlag(stateFlags, BarCode.Gather.StateBits.playerResourceAvailable) and (playerResourceCurrent > 0 or playerResourceMax > 0) then
+    AddWarning(report, "player-resource-mismatch", "playerResourceKindId", "Player resource exists but the resource-available flag is clear.", playerResourceKindId)
+  end
+
+  if playerCallingCode < 0 or playerCallingCode > 5 then
+    AddWarning(report, "player-calling-range", "playerCallingCode", "Player calling code is outside the current narrow range.", playerCallingCode)
+  end
+
+  if playerRoleCode < 0 or playerRoleCode > 4 then
+    AddWarning(report, "player-role-range", "playerRoleCode", "Player role code is outside the current narrow range.", playerRoleCode)
+  end
+
+  if playerCallingCode == 1 or playerCallingCode == 3 then
+    if playerResourceKindId ~= BarCode.Gather.ResourceKind.mana and (playerResourceCurrent > 0 or playerResourceMax > 0) then
+      AddWarning(report, "player-resource-calling", "playerResourceKindId", "Mage/cleric resource kind does not look like mana.", playerResourceKindId)
+    end
+  elseif playerCallingCode == 2 or playerCallingCode == 4 then
+    if playerResourceKindId ~= BarCode.Gather.ResourceKind.energy and (playerResourceCurrent > 0 or playerResourceMax > 0) then
+      AddWarning(report, "player-resource-calling", "playerResourceKindId", "Rogue/warrior resource kind does not look like energy.", playerResourceKindId)
+    end
+  elseif playerCallingCode == 5 then
+    if playerResourceKindId ~= BarCode.Gather.ResourceKind.power and (playerResourceCurrent > 0 or playerResourceMax > 0) then
+      AddWarning(report, "player-resource-calling", "playerResourceKindId", "Primalist resource kind does not look like power.", playerResourceKindId)
+    end
+  end
+
+  if playerHealthCurrent > 0 and not playerAvailable then
+    AddWarning(report, "player-unavailable-health", "playerAvailable", "Player snapshot has health while availability is false.", playerHealthCurrent)
+  end
+
+  if castActive and playerCastFlags == 0 then
+    AddError(report, "cast-active-flags", "playerCastFlags", "Cast is active but the cast flag field is empty.", playerCastFlags)
+  end
+
+  if not castActive and (playerCastFlags > 0 or playerCastProgressQ15 > 0 or IsFilledText(debugProbe.castAbilityName)) then
+    AddWarning(report, "cast-stale", "playerCastFlags", "Cast snapshot still contains active-looking data after cast deactivation.", playerCastFlags .. "/" .. playerCastProgressQ15)
+  end
+
+  if targetHealthCurrent > targetHealthMax and targetHealthMax > 0 then
+    AddError(report, "target-health-order", "targetHealthCurrent", "Target health current exceeds max.", targetHealthCurrent .. "/" .. targetHealthMax)
+  end
+
+  if targetHealthCurrent > 0 and targetHealthMax <= 0 then
+    AddError(report, "target-health-max-missing", "targetHealthMax", "Target health current is present but max is missing or zero.", targetHealthCurrent .. "/" .. targetHealthMax)
+  end
+
+  if targetResourceCurrent > targetResourceMax and targetResourceMax > 0 then
+    AddError(report, "target-resource-order", "targetResourceCurrent", "Target resource current exceeds max.", targetResourceCurrent .. "/" .. targetResourceMax)
+  end
+
+  if targetResourceCurrent > 0 and targetResourceMax <= 0 then
+    AddError(report, "target-resource-max-missing", "targetResourceMax", "Target resource current is present but max is missing or zero.", targetResourceCurrent .. "/" .. targetResourceMax)
+  end
+
+  if targetFlags > 0 and not HasFlag(stateFlags, BarCode.Gather.StateBits.targetPresent) then
+    AddError(report, "target-flag-without-target", "targetFlags", "Target flags are present but the target-present bit is clear.", targetFlags)
+  end
+
+  if HasFlag(stateFlags, BarCode.Gather.StateBits.targetPresent) and EmptyTargetData(snapshot) then
+    AddWarning(report, "target-present-empty", "target", "Target is present but the snapshot has no usable target data.", debugProbe.targetUnitId or targetFlags)
+  end
+
+  if targetResourceKindId == BarCode.Gather.ResourceKind.none and (targetResourceCurrent > 0 or targetResourceMax > 0) then
+    AddError(report, "target-resource-kind", "targetResourceKindId", "Target resource values exist but no resource kind was selected.", targetResourceKindId)
+  end
+
+  if HasFlag(stateFlags, BarCode.Gather.StateBits.targetPresent) and not HasFlag(stateFlags, BarCode.Gather.StateBits.targetAlive) and targetHealthCurrent > 0 then
+    AddWarning(report, "target-alive-flag", "stateFlags", "Target has health but is not marked alive.", stateFlags)
+  end
+
+  if HasFlag(stateFlags, BarCode.Gather.StateBits.targetPresent) and targetHealthCurrent <= 0 and targetHealthMax <= 0 and targetLevel <= 0 and targetFlags == 0 then
+    AddWarning(report, "target-empty", "target", "Target is present but has no health, level, or flags.", debugProbe.targetUnitId or "unknown")
+  end
+
+  if not HasFlag(stateFlags, BarCode.Gather.StateBits.targetPresent) and (targetHealthCurrent > 0 or targetHealthMax > 0 or targetLevel > 0 or targetFlags > 0 or targetResourceCurrent > 0 or targetResourceMax > 0) then
+    AddWarning(report, "target-data-without-bit", "stateFlags", "Target data exists even though the target-present bit is clear.", stateFlags)
+  end
+
+  report.valid = report.errorCount == 0
+  report.suspicious = report.suspicious or report.errorCount > 0
+  report.summary = "errors=" .. tostring(report.errorCount) .. " warnings=" .. tostring(report.warningCount)
+
+  return report
 end
 
 -- end-of-script marker comment

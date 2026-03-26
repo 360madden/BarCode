@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.0
+version: 0.3.1
 purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
 important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
@@ -8,6 +8,22 @@ protocol version: BC-Strip/1
 framework module role: Desktop entry point
 character count note: Character count not precomputed; measure with tooling if needed.
 */
+
+BC_MainUsageText() {
+    lines := []
+    lines.Push("BarCode DesktopAHK usage")
+    lines.Push("  smoke")
+    lines.Push("  bmp <path> [cropX] [cropY]")
+    lines.Push("  ui [autoCloseMs]")
+    lines.Push("  uibmp <path> [cropX] [cropY] [autoCloseMs]")
+    lines.Push("  live [sampleCount] [sleepMs]")
+    lines.Push("  watch [durationSeconds] [sleepMs]")
+    lines.Push("  liveui synthetic [intervalMs] [autoCloseMs]")
+    lines.Push("  liveui bmp <path> [cropX] [cropY] [intervalMs] [autoCloseMs]")
+    lines.Push("  liveui live [intervalMs] [autoCloseMs]")
+    lines.Push("  help")
+    return BC_Debug.Join(lines, "`r`n")
+}
 
 #Requires AutoHotkey v2.0
 #SingleInstance Force
@@ -29,13 +45,76 @@ try {
     BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode DesktopAHK run starting")
     mode := A_Args.Length >= 1 ? StrLower(A_Args[1]) : "smoke"
 
-    if (mode = "bmp") {
+    if (mode = "help" || mode = "--help" || mode = "-h") {
+        BC_Debug.WriteText(BC_Config.LatestRunPath, BC_MainUsageText())
+        result := {
+            Success: true,
+            ReportPath: BC_Config.LatestRunPath
+        }
+    } else if (mode = "bmp") {
         if (A_Args.Length < 2) {
-            throw Error("bmp mode requires a path argument")
+            throw Error("bmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
         }
         cropX := A_Args.Length >= 3 ? Integer(A_Args[3]) : 0
         cropY := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
         result := BC_Tests.RunFixedBmpDecode(A_Args[2], cropX, cropY)
+    } else if (mode = "ui") {
+        autoCloseMs := A_Args.Length >= 2 ? Integer(A_Args[2]) : 0
+        if (autoCloseMs < 0) {
+            throw Error("ui mode auto-close must be non-negative")
+        }
+        result := BC_Overlay.RunSyntheticDashboard(autoCloseMs)
+    } else if (mode = "uibmp") {
+        if (A_Args.Length < 2) {
+            throw Error("uibmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
+        }
+        cropX := A_Args.Length >= 3 ? Integer(A_Args[3]) : 0
+        cropY := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+        autoCloseMs := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
+        if (autoCloseMs < 0) {
+            throw Error("uibmp mode auto-close must be non-negative")
+        }
+        result := BC_Overlay.RunBmpDashboard(A_Args[2], cropX, cropY, autoCloseMs)
+    } else if (mode = "liveui") {
+        source := A_Args.Length >= 2 ? StrLower(A_Args[2]) : "synthetic"
+        if (source = "synthetic") {
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            if (intervalMs < 25) {
+                throw Error("liveui synthetic interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("liveui synthetic auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveUiSynthetic(intervalMs, autoCloseMs)
+        } else if (source = "bmp") {
+            if (A_Args.Length < 3) {
+                throw Error("liveui bmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
+            }
+            cropX := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            cropY := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
+            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : 250
+            autoCloseMs := A_Args.Length >= 7 ? Integer(A_Args[7]) : 0
+            if (intervalMs < 25) {
+                throw Error("liveui bmp interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("liveui bmp auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveUiBmp(A_Args[3], cropX, cropY, intervalMs, autoCloseMs)
+        } else if (source = "live") {
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            if (intervalMs < 25) {
+                throw Error("liveui live interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("liveui live auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveUiLive(intervalMs, autoCloseMs)
+        } else {
+            throw Error("Unsupported liveui source: " source "`r`n`r`n" BC_MainUsageText())
+        }
     } else if (mode = "live") {
         sampleCount := A_Args.Length >= 2 ? Integer(A_Args[2]) : 20
         sleepMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 100
@@ -59,7 +138,7 @@ try {
     } else if (mode = "smoke") {
         result := BC_Tests.RunReaderSmoke()
     } else {
-        throw Error("Unsupported mode: " mode)
+        throw Error("Unsupported mode: " mode "`r`n`r`n" BC_MainUsageText())
     }
 
     latestLines := []
