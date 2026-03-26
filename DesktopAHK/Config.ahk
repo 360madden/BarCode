@@ -46,6 +46,7 @@ class BC_Config {
     static ReportDir := BC_Config.DataRoot "\out"
     static FixtureDir := BC_Config.DataRoot "\fixtures"
     static StateDir := BC_Config.DataRoot "\state"
+    static LiveHistoryLimit := 64
     static GoodFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot.bmp"
     static CorruptFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot_corrupt.bmp"
     static SmokeReportPath := BC_Config.ReportDir "\phase2-reader-smoke.txt"
@@ -56,6 +57,8 @@ class BC_Config {
     static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
     static LiveStateJsonPath := BC_Config.StateDir "\latest-state.json"
     static LiveStateTextPath := BC_Config.StateDir "\latest-state.txt"
+    static LiveHistoryJsonPath := BC_Config.StateDir "\recent-history.json"
+    static LiveHistoryJsonlPath := BC_Config.StateDir "\recent-history.jsonl"
 
     static SymbolPanelLight := { R: 245, G: 245, B: 245 }
     static ModuleDark := { R: 16, G: 16, B: 16 }

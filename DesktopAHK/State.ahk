@@ -13,6 +13,7 @@ class BC_State {
     static Latest := {}
     static LockedGeometry := {}
     static Session := {}
+    static History := []
 
     static GetLockedGeometry() {
         return IsObject(BC_State.LockedGeometry) && BC_State.LockedGeometry.HasOwnProp("Pitch")
@@ -23,6 +24,9 @@ class BC_State {
     static ResetLiveOutputs() {
         BC_State.Latest := {}
         BC_State.Session := BC_State.BuildEmptySession()
+        BC_State.History := []
+        BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonPath)
+        BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonlPath)
         BC_State.WriteSnapshot()
     }
 
@@ -108,8 +112,11 @@ class BC_State {
 
     static WriteSnapshot() {
         snapshot := BC_State.BuildSnapshot()
-        BC_Debug.WriteText(BC_Config.LiveStateJsonPath, BC_State.BuildSnapshotJson(snapshot))
+        BC_Debug.WriteText(BC_Config.LiveStateJsonPath, BC_State.BuildSnapshotJson(snapshot, true))
         BC_Debug.WriteText(BC_Config.LiveStateTextPath, BC_State.BuildSnapshotText(snapshot))
+        if (snapshot.timestampUtc != "") {
+            BC_State.AppendHistorySnapshot(snapshot)
+        }
     }
 
     static BuildSnapshot() {
@@ -169,7 +176,7 @@ class BC_State {
         }
     }
 
-    static BuildSnapshotJson(snapshot) {
+    static BuildSnapshotJson(snapshot, pretty := true) {
         fields := []
         fields.Push(BC_State.JsonStringField("timestampUtc", snapshot.timestampUtc))
         fields.Push(BC_State.JsonBoolField("accepted", snapshot.accepted))
@@ -222,7 +229,10 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("sequenceWrapCount", snapshot.sequenceWrapCount))
         fields.Push(BC_State.JsonStringField("windowTitle", snapshot.windowTitle))
         fields.Push(BC_State.JsonStringField("processName", snapshot.processName))
-        return "{`r`n  " BC_Debug.Join(fields, ",`r`n  ") "`r`n}"
+        if (pretty) {
+            return "{`r`n  " BC_Debug.Join(fields, ",`r`n  ") "`r`n}"
+        }
+        return "{" BC_Debug.Join(fields, ",") "}"
     }
 
     static BuildSnapshotText(snapshot) {
@@ -292,11 +302,39 @@ class BC_State {
         }
     }
 
+    static AppendHistorySnapshot(snapshot) {
+        history := BC_State.EnsureHistory()
+        history.Push(snapshot)
+        while (history.Length > BC_Config.LiveHistoryLimit) {
+            history.RemoveAt(1)
+        }
+        BC_Debug.AppendText(BC_Config.LiveHistoryJsonlPath, BC_State.BuildSnapshotJson(snapshot, false) "`r`n")
+        BC_Debug.WriteText(BC_Config.LiveHistoryJsonPath, BC_State.BuildHistoryJson(history))
+    }
+
+    static BuildHistoryJson(history) {
+        items := []
+        for _, snapshot in history {
+            items.Push(BC_State.BuildSnapshotJson(snapshot, false))
+        }
+        if (items.Length = 0) {
+            return "[]"
+        }
+        return "[`r`n  " BC_Debug.Join(items, ",`r`n  ") "`r`n]"
+    }
+
     static EnsureSession() {
         if (!IsObject(BC_State.Session) || !BC_State.Session.HasOwnProp("SessionStartedUtc")) {
             BC_State.Session := BC_State.BuildEmptySession()
         }
         return BC_State.Session
+    }
+
+    static EnsureHistory() {
+        if (!IsObject(BC_State.History)) {
+            BC_State.History := []
+        }
+        return BC_State.History
     }
 
     static UpdateSessionStats(validationResult, sampleIndex, sequence) {
@@ -481,6 +519,12 @@ class BC_State {
             return map.%key%
         }
         return defaultValue
+    }
+
+    static DeleteIfPresent(path) {
+        if FileExist(path) {
+            FileDelete(path)
+        }
     }
 }
 

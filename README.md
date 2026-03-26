@@ -26,4 +26,6 @@ Latest live-state artifacts:
 
 - `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.json`
 - `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.txt`
+- `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.json`
+- `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.jsonl`
 - `C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\phase2-watch.txt`

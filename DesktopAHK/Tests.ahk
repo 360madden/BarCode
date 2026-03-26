@@ -209,6 +209,8 @@ class BC_Tests {
         }
         reportLines.Push("Decoded bytes[1..16]: " BC_Debug.Hex(lastResult.Decode.Bytes, 1, 16))
         reportLines.Push("LastCaptureBmp: " BC_Config.LiveCaptureBmpPath)
+        reportLines.Push("StateHistoryJson: " BC_Config.LiveHistoryJsonPath)
+        reportLines.Push("StateHistoryJsonl: " BC_Config.LiveHistoryJsonlPath)
 
         BC_Debug.WriteText(BC_Config.LiveReportPath, BC_Debug.Join(reportLines, "`r`n"))
 
@@ -297,6 +299,8 @@ class BC_Tests {
         reportLines.Push("BorderErrors: " details.BorderErrors)
         reportLines.Push("StateJson: " BC_Config.LiveStateJsonPath)
         reportLines.Push("StateText: " BC_Config.LiveStateTextPath)
+        reportLines.Push("StateHistoryJson: " BC_Config.LiveHistoryJsonPath)
+        reportLines.Push("StateHistoryJsonl: " BC_Config.LiveHistoryJsonlPath)
         BC_Debug.WriteText(BC_Config.LiveWatchReportPath, BC_Debug.Join(reportLines, "`r`n"))
 
         return {
