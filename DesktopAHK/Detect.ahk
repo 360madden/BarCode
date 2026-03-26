@@ -10,9 +10,16 @@ character count note: Character count not precomputed; measure with tooling if n
 */
 
 class BC_Detect {
-    static LocateBand(image, profile) {
+    static LocateBand(image, profile, geometryHint := 0) {
         if (image.Width = profile.BandWidth && image.Height = profile.BandHeight) {
             return BC_Detect.BuildDetectionResult(BC_Detect.EvaluateCandidate(image, profile, 0, 0, profile.Pitch, 1, 1, "exact"), profile)
+        }
+
+        if IsObject(geometryHint) {
+            candidate := BC_Detect.EvaluateCandidate(image, profile, geometryHint.OriginX, geometryHint.OriginY, geometryHint.Pitch, 1, 1, "locked")
+            if (IsObject(candidate) && candidate.BorderErrors <= BC_Config.MaxBorderErrors) {
+                return BC_Detect.BuildDetectionResult(candidate, profile)
+            }
         }
 
         bestCandidate := BC_Detect.SearchScaledBand(image, profile)

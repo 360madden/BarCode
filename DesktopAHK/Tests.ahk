@@ -112,10 +112,130 @@ class BC_Tests {
         }
     }
 
+    static RunLiveDecode(sampleCount := 20, sleepMs := 100) {
+        hwnd := BC_Capture.FindRiftWindow()
+        if !hwnd {
+            throw Error("No likely RIFT window was found for live capture.")
+        }
+
+        acceptedCount := 0
+        rejectedCount := 0
+        firstAcceptedSequence := ""
+        lastResult := ""
+        totalCaptureMs := 0
+        totalPipelineMs := 0
+        lockedCount := 0
+        searchedCount := 0
+        sampleIndex := 1
+
+        while (sampleIndex <= sampleCount) {
+            result := BC_Tests.DecodeLiveFrame(hwnd)
+            validation := result.Validation
+            totalCaptureMs += result.Timings.CaptureMs
+            totalPipelineMs += result.Timings.PipelineMs
+            if (validation.IsAccepted) {
+                acceptedCount += 1
+                if (firstAcceptedSequence = "" && validation.Details.HasOwnProp("Transport")) {
+                    firstAcceptedSequence := validation.Details.Transport.Sequence
+                }
+            } else {
+                rejectedCount += 1
+            }
+
+            lastResult := result
+            if (result.Detection.SearchMode = "locked") {
+                lockedCount += 1
+            } else {
+                searchedCount += 1
+            }
+            if (sampleIndex < sampleCount && sleepMs > 0) {
+                Sleep sleepMs
+            }
+            sampleIndex += 1
+        }
+
+        if !IsObject(lastResult) {
+            throw Error("Live decode produced no samples.")
+        }
+
+        title := WinGetTitle("ahk_id " hwnd)
+        processName := WinGetProcessName("ahk_id " hwnd)
+        client := lastResult.Image.ClientRect
+        validation := lastResult.Validation
+        details := validation.Details
+        hotPage := details.HasOwnProp("HotPage") ? details.HotPage : {}
+        transport := details.HasOwnProp("Transport") ? details.Transport : {}
+
+        BC_Debug.WriteBmp24(BC_Config.LiveCaptureBmpPath, lastResult.Image.Width, lastResult.Image.Height, lastResult.Image.Pixels)
+
+        reportLines := []
+        reportLines.Push("BarCode live decode report")
+        reportLines.Push("WindowTitle: " title)
+        reportLines.Push("ProcessName: " processName)
+        reportLines.Push("ClientRect: " client.x "," client.y " " client.width "x" client.height)
+        reportLines.Push("Samples: " sampleCount)
+        reportLines.Push("SleepMs: " sleepMs)
+        reportLines.Push("AcceptedSamples: " acceptedCount)
+        reportLines.Push("RejectedSamples: " rejectedCount)
+        reportLines.Push("LockedSamples: " lockedCount)
+        reportLines.Push("SearchedSamples: " searchedCount)
+        reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / sampleCount, 2))
+        reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / sampleCount, 2))
+        reportLines.Push("FirstAcceptedSequence: " firstAcceptedSequence)
+        reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
+        reportLines.Push("LastReason: " validation.Reason)
+        reportLines.Push("LastConfidence: " validation.Confidence)
+        reportLines.Push("SearchMode: " details.SearchMode)
+        reportLines.Push("Origin: " details.OriginX "," details.OriginY)
+        reportLines.Push("Pitch: " Round(details.Pitch, 3))
+        reportLines.Push("BandSize: " Round(details.BandWidth, 3) "x" Round(details.BandHeight, 3))
+        reportLines.Push("BorderErrors: " details.BorderErrors)
+        if (transport.HasOwnProp("Sequence")) {
+            reportLines.Push("LastSequence: " transport.Sequence)
+            reportLines.Push("LastPageId: " transport.PageId)
+        }
+        if (hotPage.HasOwnProp("HealthCurrent")) {
+            reportLines.Push("Health: " hotPage.HealthCurrent "/" hotPage.HealthMax)
+            reportLines.Push("Resource: " hotPage.ResourceCurrent "/" hotPage.ResourceMax)
+            reportLines.Push("CastProgressQ15: " hotPage.CastProgressQ15)
+            reportLines.Push("Level: " hotPage.Level)
+            reportLines.Push("CallingCode: " hotPage.CallingCode)
+            reportLines.Push("RoleCode: " hotPage.RoleCode)
+        }
+        reportLines.Push("Decoded bytes[1..16]: " BC_Debug.Hex(lastResult.Decode.Bytes, 1, 16))
+        reportLines.Push("LastCaptureBmp: " BC_Config.LiveCaptureBmpPath)
+
+        BC_Debug.WriteText(BC_Config.LiveReportPath, BC_Debug.Join(reportLines, "`r`n"))
+
+        return {
+            Success: acceptedCount > 0,
+            ReportPath: BC_Config.LiveReportPath
+        }
+    }
+
     static DecodeBmp(path, cropX := 0, cropY := 0) {
         profile := BC_Protocol.GetProfile()
         image := BC_Capture.AcquireFromBmp(path, cropX, cropY)
-        detection := BC_Detect.LocateBand(image, profile)
+        return BC_Tests.DecodeImage(image)
+    }
+
+    static DecodeLiveFrame(hwnd, cropX := 0, cropY := 0) {
+        captureStarted := A_TickCount
+        image := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY)
+        captureMs := A_TickCount - captureStarted
+
+        pipelineStarted := A_TickCount
+        result := BC_Tests.DecodeImage(image)
+        result.Timings := {
+            CaptureMs: captureMs,
+            PipelineMs: A_TickCount - pipelineStarted
+        }
+        return result
+    }
+
+    static DecodeImage(image) {
+        profile := BC_Protocol.GetProfile()
+        detection := BC_Detect.LocateBand(image, profile, BC_State.GetLockedGeometry())
         decodeResult := BC_Decode.Decode(image, detection)
         validation := BC_Validate.Validate(detection, decodeResult)
         BC_State.Update(validation)

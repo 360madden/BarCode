@@ -11,11 +11,26 @@ character count note: Character count not precomputed; measure with tooling if n
 
 class BC_State {
     static Latest := {}
+    static LockedGeometry := {}
+
+    static GetLockedGeometry() {
+        return IsObject(BC_State.LockedGeometry) && BC_State.LockedGeometry.HasOwnProp("Pitch")
+            ? BC_State.LockedGeometry
+            : ""
+    }
 
     static Update(validationResult) {
         details := validationResult.Details
         transport := details.HasOwnProp("Transport") ? details.Transport : {}
         hotPage := details.HasOwnProp("HotPage") ? details.HotPage : {}
+
+        if (validationResult.IsAccepted && details.HasOwnProp("Pitch") && details.Pitch > 0) {
+            BC_State.LockedGeometry := {
+                OriginX: details.OriginX,
+                OriginY: details.OriginY,
+                Pitch: details.Pitch
+            }
+        }
 
         BC_State.Latest := {
             TimestampUtc: A_NowUTC,

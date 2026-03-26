@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Main.ahk
 version: 0.2.0
-purpose: Entry point for the minimum BC-Strip/1 reader smoke harness.
+purpose: Entry point for the BC-Strip/1 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
-important assumptions: Default mode runs the synthetic schema-2 reader smoke; optional bmp mode decodes a fixed BMP path with exact P720A geometry.
+important assumptions: Default mode runs the synthetic schema-2 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
 protocol version: BC-Strip/1
 framework module role: Desktop entry point
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -36,6 +36,16 @@ try {
         cropX := A_Args.Length >= 3 ? Integer(A_Args[3]) : 0
         cropY := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
         result := BC_Tests.RunFixedBmpDecode(A_Args[2], cropX, cropY)
+    } else if (mode = "live") {
+        sampleCount := A_Args.Length >= 2 ? Integer(A_Args[2]) : 20
+        sleepMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 100
+        if (sampleCount <= 0) {
+            throw Error("live mode sample count must be positive")
+        }
+        if (sleepMs < 0) {
+            throw Error("live mode sleep must be non-negative")
+        }
+        result := BC_Tests.RunLiveDecode(sampleCount, sleepMs)
     } else if (mode = "smoke") {
         result := BC_Tests.RunReaderSmoke()
     } else {

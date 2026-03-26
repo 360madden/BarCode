@@ -39,6 +39,8 @@ class BC_Config {
     static CorruptFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_hot_corrupt.bmp"
     static SmokeReportPath := A_ScriptDir "\out\phase2-reader-smoke.txt"
     static FixedBmpReportPath := A_ScriptDir "\out\phase2-fixed-bmp.txt"
+    static LiveReportPath := A_ScriptDir "\out\phase2-live.txt"
+    static LiveCaptureBmpPath := A_ScriptDir "\out\phase2-live-last-capture.bmp"
     static LatestRunPath := A_ScriptDir "\out\latest-run.txt"
 
     static SymbolPanelLight := { R: 245, G: 245, B: 245 }
