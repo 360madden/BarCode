@@ -20,6 +20,7 @@ BarCode.Config = {
   requestedStrata = nil,
   requestedLayer = 100000,
   showOnStartup = true,
+  chatColorHex = "#4DEAFF",
   colors = {
     bandLight = { 0.96, 0.96, 0.96, 1.0 },
     moduleDark = { 0.06, 0.06, 0.06, 1.0 },

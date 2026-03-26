@@ -11,7 +11,16 @@ BarCode = BarCode or {}
 BarCode.Diagnostics = {}
 
 function BarCode.Diagnostics.Log(message)
-  print("[BarCode] " .. tostring(message))
+  local formatted = "[BarCode] " .. tostring(message)
+
+  if Command ~= nil and Command.Console ~= nil and Command.Console.Display ~= nil then
+    local colorHex = BarCode.Config.chatColorHex or "#4DEAFF"
+    local htmlText = "<font color=\"" .. colorHex .. "\">" .. formatted .. "</font>"
+    Command.Console.Display("general", true, htmlText, true)
+    return
+  end
+
+  print(formatted)
 end
 
 function BarCode.Diagnostics.DescribeStrataList(frame)
@@ -39,6 +48,11 @@ function BarCode.Diagnostics.DescribeStrataList(frame)
   end
 
   return table.concat(list, ", ")
+end
+
+function BarCode.Diagnostics.LogLoaded()
+  local config = BarCode.Config
+  BarCode.Diagnostics.Log(config.addonIdentifier .. " v" .. config.addonVersion .. " loaded.")
 end
 
 -- end-of-script marker comment

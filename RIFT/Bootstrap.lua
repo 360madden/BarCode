@@ -34,6 +34,7 @@ function BarCode.Bootstrap.Initialize()
     render = renderState
   }
 
+  BarCode.Diagnostics.LogLoaded()
   BarCode.Diagnostics.Log("Initialized static BC-Strip/1 spike.")
   BarCode.Diagnostics.Log("Root strata options: " .. BarCode.Diagnostics.DescribeStrataList(root))
   BarCode.Diagnostics.Log("Rendered profile: " .. renderState.plan.profile.id)
