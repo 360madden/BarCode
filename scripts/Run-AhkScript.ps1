@@ -1,6 +1,9 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ScriptPath,
+
+    [int]$TimeoutMs = 30000,
 
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ScriptArgs = @()
@@ -38,7 +41,7 @@ $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $null = $process.Start()
 
-$finished = $process.WaitForExit(10000)
+$finished = $process.WaitForExit($TimeoutMs)
 if (-not $finished) {
     $process.Kill()
     $process.WaitForExit()

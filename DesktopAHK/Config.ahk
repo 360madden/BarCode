@@ -9,6 +9,15 @@ framework module role: Desktop configuration
 character count note: Character count not precomputed; measure with tooling if needed.
 */
 
+BC_ConfigResolveDataRoot() {
+    baseDir := EnvGet("LOCALAPPDATA")
+    if (baseDir = "") {
+        baseDir := A_Temp
+    }
+
+    return baseDir "\BarCode\DesktopAHK"
+}
+
 class BC_Config {
     static AppName := "BarCode"
     static AppVersion := "0.2.0"
@@ -33,15 +42,16 @@ class BC_Config {
     static SearchCoarseXStep := 2
     static SearchCoarseYStep := 1
     static SearchCaptureHeight := 160
-    static ReportDir := A_ScriptDir "\out"
-    static FixtureDir := A_ScriptDir "\fixtures"
-    static GoodFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_hot.bmp"
-    static CorruptFixturePath := A_ScriptDir "\fixtures\bc_strip_p720a_hot_corrupt.bmp"
-    static SmokeReportPath := A_ScriptDir "\out\phase2-reader-smoke.txt"
-    static FixedBmpReportPath := A_ScriptDir "\out\phase2-fixed-bmp.txt"
-    static LiveReportPath := A_ScriptDir "\out\phase2-live.txt"
-    static LiveCaptureBmpPath := A_ScriptDir "\out\phase2-live-last-capture.bmp"
-    static LatestRunPath := A_ScriptDir "\out\latest-run.txt"
+    static DataRoot := BC_ConfigResolveDataRoot()
+    static ReportDir := BC_Config.DataRoot "\out"
+    static FixtureDir := BC_Config.DataRoot "\fixtures"
+    static GoodFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot.bmp"
+    static CorruptFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot_corrupt.bmp"
+    static SmokeReportPath := BC_Config.ReportDir "\phase2-reader-smoke.txt"
+    static FixedBmpReportPath := BC_Config.ReportDir "\phase2-fixed-bmp.txt"
+    static LiveReportPath := BC_Config.ReportDir "\phase2-live.txt"
+    static LiveCaptureBmpPath := BC_Config.ReportDir "\phase2-live-last-capture.bmp"
+    static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
 
     static SymbolPanelLight := { R: 245, G: 245, B: 245 }
     static ModuleDark := { R: 16, G: 16, B: 16 }

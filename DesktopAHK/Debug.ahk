@@ -11,7 +11,7 @@ character count note: Character count not precomputed; measure with tooling if n
 
 class BC_Debug {
     static TracePath() {
-        return A_ScriptDir "\out\trace.txt"
+        return BC_Config.ReportDir "\trace.txt"
     }
 
     static Join(parts, delimiter := "") {
