@@ -1,0 +1,13 @@
+# Windows / Explorer noise
+Thumbs.db
+Desktop.ini
+
+# Editor / local temp files
+*.tmp
+*.temp
+*.bak
+*.log
+
+# Generated BarCode harness outputs
+DesktopAHK/out/
+DesktopAHK/fixtures/

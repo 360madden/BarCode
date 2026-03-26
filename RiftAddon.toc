@@ -1,0 +1,19 @@
+Identifier = "BarCode"
+Name = {
+  English = "BarCode"
+}
+Description = {
+  English = "Static BC-Strip/1 renderer spike for RIFT."
+}
+Author = "OpenAI Codex"
+Website = "https://example.invalid/barcode"
+Version = "0.1.0"
+Environment = "3.2"
+RunOnStartup = {
+  "Core/Config.lua",
+  "Core/Pack.lua",
+  "Core/Protocol.lua",
+  "RIFT/Diagnostics.lua",
+  "RIFT/Render.lua",
+  "RIFT/Bootstrap.lua"
+}
