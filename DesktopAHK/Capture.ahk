@@ -10,7 +10,8 @@ character count note: Character count not precomputed; measure with tooling if n
 */
 
 class BC_Capture {
-    static PreferredProcessNames := ["rift_x64.exe", "Rift.exe"]
+    static PreferredProcessNames := ["rift_x64.exe", "rift_x64", "Rift.exe", "Rift"]
+    static PreferredWindowTitles := ["RIFT"]
 
     static AcquireFromBmp(path, cropX := 0, cropY := 0) {
         image := BC_Debug.ReadBmp24(path)
@@ -57,32 +58,65 @@ class BC_Capture {
     }
 
     static FindRiftWindow() {
-        for _, processName in BC_Capture.PreferredProcessNames {
-            activeHwnd := WinActive("ahk_exe " processName)
-            if (activeHwnd && BC_Capture.IsWindowUsable(activeHwnd)) {
-                return activeHwnd
-            }
+        activeHwnd := WinActive("A")
+        if (activeHwnd && BC_Capture.IsPreferredWindow(activeHwnd) && BC_Capture.IsWindowUsable(activeHwnd)) {
+            BC_Debug.Trace("capture.find:active=" BC_Capture.DescribeWindow(activeHwnd) "`r`n")
+            return activeHwnd
         }
 
         bestHwnd := 0
         bestArea := -1
+        traces := []
 
-        for _, processName in BC_Capture.PreferredProcessNames {
-            hwndList := WinGetList("ahk_exe " processName)
-            for _, hwnd in hwndList {
-                if !BC_Capture.IsWindowUsable(hwnd) {
-                    continue
-                }
-                client := BC_Capture.GetClientRectOnScreen(hwnd)
-                area := client.width * client.height
-                if (area > bestArea) {
-                    bestArea := area
-                    bestHwnd := hwnd
-                }
+        for _, hwnd in WinGetList() {
+            if !BC_Capture.IsPreferredWindow(hwnd) {
+                continue
+            }
+
+            description := BC_Capture.DescribeWindow(hwnd)
+            if !BC_Capture.IsWindowUsable(hwnd) {
+                traces.Push("capture.find:skip=" description)
+                continue
+            }
+
+            client := BC_Capture.GetClientRectOnScreen(hwnd)
+            area := client.width * client.height
+            traces.Push("capture.find:candidate=" description " area=" area)
+            if (area > bestArea) {
+                bestArea := area
+                bestHwnd := hwnd
             }
         }
 
+        if (traces.Length) {
+            BC_Debug.Trace(BC_Debug.Join(traces, "`r`n") "`r`n")
+        } else {
+            BC_Debug.Trace("capture.find:no-preferred-window`r`n")
+        }
+
         return bestHwnd
+    }
+
+    static IsPreferredWindow(hwnd) {
+        try {
+            processName := BC_Capture.NormalizeProcessName(WinGetProcessName("ahk_id " hwnd))
+            for _, preferredProcessName in BC_Capture.PreferredProcessNames {
+                if (processName = BC_Capture.NormalizeProcessName(preferredProcessName)) {
+                    return true
+                }
+            }
+
+            title := StrLower(WinGetTitle("ahk_id " hwnd))
+            for _, preferredTitle in BC_Capture.PreferredWindowTitles {
+                if (preferredTitle != "" && InStr(title, StrLower(preferredTitle))) {
+                    return true
+                }
+            }
+        } catch {
+            return false
+        }
+
+        return false
     }
 
     static IsWindowUsable(hwnd) {
@@ -100,6 +134,25 @@ class BC_Capture {
         }
 
         return client.width > 0 && client.height > 0
+    }
+
+    static NormalizeProcessName(name) {
+        normalized := StrLower(Trim(name))
+        if (SubStr(normalized, -3) = ".exe") {
+            normalized := SubStr(normalized, 1, StrLen(normalized) - 4)
+        }
+        return normalized
+    }
+
+    static DescribeWindow(hwnd) {
+        try {
+            processName := WinGetProcessName("ahk_id " hwnd)
+            title := WinGetTitle("ahk_id " hwnd)
+            client := BC_Capture.GetClientRectOnScreen(hwnd)
+            return "hwnd=" hwnd " exe=" processName " title=" title " client=" client.width "x" client.height
+        } catch {
+            return "hwnd=" hwnd " unreadable"
+        }
     }
 
     static GetClientRectOnScreen(hwnd) {

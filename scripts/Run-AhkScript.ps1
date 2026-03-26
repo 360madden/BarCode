@@ -1,35 +1,61 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ScriptPath
+    [string]$ScriptPath,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ScriptArgs = @()
 )
 
 $exe = 'C:\Users\mrkoo\AppData\Local\Programs\AutoHotkey\v2\AutoHotkey64.exe'
-$stdout = Join-Path $env:TEMP 'barcode-ahk-run-stdout.txt'
-$stderr = Join-Path $env:TEMP 'barcode-ahk-run-stderr.txt'
 
-Remove-Item -Force $stdout, $stderr -ErrorAction SilentlyContinue
+function Format-ProcessArgument {
+    param([string]$Value)
 
-$process = Start-Process `
-    -FilePath $exe `
-    -ArgumentList '/ErrorStdOut=UTF-8', $ScriptPath `
-    -RedirectStandardOutput $stdout `
-    -RedirectStandardError $stderr `
-    -PassThru
+    if ($null -eq $Value) {
+        return '""'
+    }
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $escaped = $Value -replace '(\\*)"', '$1$1\"'
+    $escaped = $escaped -replace '(\\+)$', '$1$1'
+    return '"' + $escaped + '"'
+}
+
+$arguments = @('/ErrorStdOut=UTF-8', $ScriptPath) + $ScriptArgs
+$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$startInfo.FileName = $exe
+$startInfo.Arguments = (($arguments | ForEach-Object { Format-ProcessArgument $_ }) -join ' ')
+$startInfo.UseShellExecute = $false
+$startInfo.RedirectStandardOutput = $true
+$startInfo.RedirectStandardError = $true
+$startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+$startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+
+$process = [System.Diagnostics.Process]::new()
+$process.StartInfo = $startInfo
+$null = $process.Start()
 
 $finished = $process.WaitForExit(10000)
 if (-not $finished) {
-    Stop-Process -Id $process.Id -Force
+    $process.Kill()
+    $process.WaitForExit()
     Write-Output 'TimedOut=true'
-} else {
-    Write-Output ("ExitCode=" + $process.ExitCode)
 }
 
-if (Test-Path $stdout) {
+$stdout = $process.StandardOutput.ReadToEnd()
+$stderr = $process.StandardError.ReadToEnd()
+
+Write-Output ("ExitCode=" + $process.ExitCode)
+
+if ($stdout.Length -gt 0) {
     Write-Output '--- STDOUT ---'
-    Get-Content -Raw $stdout
+    Write-Output $stdout
 }
 
-if (Test-Path $stderr) {
+if ($stderr.Length -gt 0) {
     Write-Output '--- STDERR ---'
-    Get-Content -Raw $stderr
+    Write-Output $stderr
 }
