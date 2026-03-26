@@ -21,6 +21,7 @@ Live data watch:
 .\scripts\Run-AhkScript.cmd -ScriptPath .\DesktopAHK\Main.ahk watch 10 100
 .\scripts\Watch-LiveState.cmd -DurationSeconds 10 -ReaderSleepMs 100
 .\scripts\Soak-LiveReader.cmd -DurationSeconds 60 -ReaderSleepMs 100
+.\\scripts\\Serve-LiveState.cmd -Port 8756
 ```
 
 Latest live-state artifacts:
