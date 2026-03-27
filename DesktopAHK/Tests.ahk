@@ -407,6 +407,8 @@ class BC_Tests {
                 LockedSamples: lockedCount,
                 SearchedSamples: searchedCount,
                 CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                CaptureRouteReason: lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : "",
+                CaptureHintMode: lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : "",
                 FallbackSamples: fallbackSampleCount,
                 LastReason: validation.Reason
             }
@@ -559,6 +561,8 @@ class BC_Tests {
                 LockedSamples: lockedCount,
                 SearchedSamples: searchedCount,
                 CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                CaptureRouteReason: lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : "",
+                CaptureHintMode: lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : "",
                 FallbackSamples: fallbackSampleCount,
                 LastReason: validation.Reason
             }
