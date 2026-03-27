@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.16
+version: 0.3.18
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.

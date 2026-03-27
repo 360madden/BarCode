@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.14
+version: 0.3.18
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -106,7 +106,29 @@ function Wait-ForFreshFile {
         Start-Sleep -Milliseconds 50
     }
 
-    return (Test-Path -LiteralPath $LiteralPath)
+    return Test-FreshFile -LiteralPath $LiteralPath -NotOlderThan $NotOlderThan
+}
+
+function Test-FreshFile {
+    param(
+        [string]$LiteralPath,
+        [datetime]$NotOlderThan
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LiteralPath)) {
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $LiteralPath)) {
+        return $false
+    }
+
+    $item = Get-Item -LiteralPath $LiteralPath -ErrorAction SilentlyContinue
+    if ($null -eq $item) {
+        return $false
+    }
+
+    return $item.LastWriteTime -ge $NotOlderThan.AddMilliseconds(-250)
 }
 
 function Wait-ForLatestRunCompletion {
@@ -141,14 +163,15 @@ function Wait-ForLatestRunCompletion {
 function Copy-ArtifactIfPresent {
     param(
         [string]$SourcePath,
-        [string]$DestinationDirectory
+        [string]$DestinationDirectory,
+        [datetime]$NotOlderThan
     )
 
     if ([string]::IsNullOrWhiteSpace($SourcePath)) {
         return
     }
 
-    if (-not (Test-Path -LiteralPath $SourcePath)) {
+    if (-not (Test-FreshFile -LiteralPath $SourcePath -NotOlderThan $NotOlderThan)) {
         return
     }
 
@@ -171,14 +194,14 @@ function New-RunArchive {
     $archiveDir = Join-Path $archiveRoot ($stamp + '-' + $ModeName)
     New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
 
-    Copy-ArtifactIfPresent -SourcePath $latestRunPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $ReportPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestSummaryPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestSummaryJsonPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestStateTextPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestStateJsonPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonPath -DestinationDirectory $archiveDir
-    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonlPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestRunPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $ReportPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestSummaryPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestSummaryJsonPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestStateTextPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestStateJsonPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
+    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonlPath -DestinationDirectory $archiveDir -NotOlderThan $StartedAt
 
     return $archiveDir
 }
@@ -240,23 +263,25 @@ if ($stderr) {
 
 $latestRun = Wait-ForLatestRunCompletion -NotOlderThan $runStartTime
 $reportPath = Get-LatestRunReportPathFromLines -Lines $latestRun
+$hasFreshReport = $false
 if ($reportPath) {
-    $null = Wait-ForFreshFile -LiteralPath $reportPath -NotOlderThan $runStartTime -TimeoutMs 1500
+    $hasFreshReport = Wait-ForFreshFile -LiteralPath $reportPath -NotOlderThan $runStartTime -TimeoutMs 1500
 }
+$hasFreshSummary = $false
 if ($Mode -ne 'summary') {
-    $null = Wait-ForFreshFile -LiteralPath $latestSummaryPath -NotOlderThan $runStartTime -TimeoutMs 1500
+    $hasFreshSummary = Wait-ForFreshFile -LiteralPath $latestSummaryPath -NotOlderThan $runStartTime -TimeoutMs 1500
 }
 
 if ($reportPath) {
     Write-Output '--- LATEST RUN ---'
     $latestRun
-    if ((-not $stdout) -and (Test-Path -LiteralPath $reportPath)) {
+    if ((-not $stdout) -and $hasFreshReport) {
         Write-Output '--- REPORT ---'
         Get-Content -LiteralPath $reportPath -ErrorAction SilentlyContinue
     }
 }
 
-if (($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
+if (($Mode -ne 'summary') -and $hasFreshSummary) {
     Write-Output '--- SUMMARY ---'
     Get-Content -LiteralPath $latestSummaryPath -ErrorAction SilentlyContinue
 }
