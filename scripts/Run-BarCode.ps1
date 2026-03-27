@@ -94,7 +94,7 @@ if ($reportPath) {
     }
 }
 
-if (($process.ExitCode -eq 0) -and ($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
+if (($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
     Write-Output '--- SUMMARY ---'
     Get-Content -LiteralPath $latestSummaryPath -ErrorAction SilentlyContinue
 }
