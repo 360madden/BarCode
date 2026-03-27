@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.5
+version: 0.3.6
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -31,6 +31,7 @@ class BC_Overlay {
     static Window := ""
     static Controls := {}
     static CurrentTitle := "BarCode Reader Dashboard"
+    static SurfaceMode := "dashboard"
     static LastSnapshot := ""
     static LiveUiMode := "synthetic"
     static LiveUiSourceLabel := "synthetic"
@@ -45,16 +46,32 @@ class BC_Overlay {
     static LiveUiHistory := []
     static LiveUiHistoryLimit := 8
 
-    static EnsureWindow(title := "BarCode Reader Dashboard") {
+    static DiscardWindow() {
         if IsObject(BC_Overlay.Window) {
             try {
-                BC_Overlay.Window.Title := title
-                return BC_Overlay.Window
+                BC_Overlay.Window.Destroy()
             } catch {
-                BC_Overlay.Window := ""
-                BC_Overlay.Controls := {}
             }
         }
+
+        BC_Overlay.Window := ""
+        BC_Overlay.Controls := {}
+    }
+
+    static EnsureWindow(title := "BarCode Reader Dashboard") {
+        if IsObject(BC_Overlay.Window) {
+            if (BC_Overlay.SurfaceMode = "dashboard") {
+                try {
+                    BC_Overlay.Window.Title := title
+                    return BC_Overlay.Window
+                } catch {
+                }
+            }
+
+            BC_Overlay.DiscardWindow()
+        }
+
+        BC_Overlay.SurfaceMode := "dashboard"
 
         window := Gui("+AlwaysOnTop +ToolWindow +MinSize740x790", title)
         window.BackColor := BC_Overlay.Palette.WindowBack
@@ -160,6 +177,118 @@ class BC_Overlay {
         return window
     }
 
+    static EnsureHudWindow(title := "BarCode Reader HUD") {
+        if IsObject(BC_Overlay.Window) {
+            if (BC_Overlay.SurfaceMode = "hud") {
+                try {
+                    BC_Overlay.Window.Title := title
+                    return BC_Overlay.Window
+                } catch {
+                }
+            }
+
+            BC_Overlay.DiscardWindow()
+        }
+
+        BC_Overlay.SurfaceMode := "hud"
+        window := Gui("+AlwaysOnTop +ToolWindow +MinSize760x430", title)
+        window.BackColor := BC_Overlay.Palette.WindowBack
+        window.MarginX := 12
+        window.MarginY := 12
+        window.SetFont("s11 c" BC_Overlay.Palette.BodyText, "Segoe UI")
+
+        window.SetFont("s14 Bold c" BC_Overlay.Palette.Header, "Consolas")
+        header := window.AddText("xm ym w720", "BarCode Reader HUD")
+        window.SetFont("s10 c" BC_Overlay.Palette.StatusOk, "Consolas")
+        status := window.AddText("xm y+8 w720", "Status: waiting")
+        window.SetFont("s10 c" BC_Overlay.Palette.Mode, "Consolas")
+        liveMode := window.AddText("xm y+4 w720", "Mode: idle")
+
+        window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
+        refreshButton := window.AddButton("x+m yp-2 w80", "Refresh")
+        copyPathButton := window.AddButton("x+m yp w110", "Copy State Path")
+        copySummaryButton := window.AddButton("x+m yp w120", "Copy Summary")
+        closeButton := window.AddButton("x+m yp w70", "Close")
+
+        window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
+        compareText := window.AddText("xm y+16 w720", "Compare: waiting")
+
+        window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionPlayer, "Consolas")
+        playerGroup := window.AddGroupBox("xm y+14 w350 h225", "Player")
+        window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
+        playerHealthLabel := window.AddText("xp+14 yp+24 w312", "Health: -")
+        playerHealthBar := window.AddProgress("xp yp+22 w312 h18 c4CAF50 Background202020", 0)
+        playerResourceLabel := window.AddText("xp yp+28 w312", "Resource: -")
+        playerResourceBar := window.AddProgress("xp yp+22 w312 h18 c2AA1D3 Background202020", 0)
+        window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
+        playerMeta := window.AddText("xp yp+28 w312", "Level / Calling / Role")
+        window.SetFont("s9 c" BC_Overlay.Palette.StatusOk, "Consolas")
+        playerStatus := window.AddText("xp yp+24 w312", "State: -")
+        window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Consolas")
+        playerOffense := window.AddEdit("xp yp+24 w312 r4 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
+
+        window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionTarget, "Consolas")
+        targetGroup := window.AddGroupBox("x+m yp w350 h225", "Target")
+        window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
+        targetHealthLabel := window.AddText("xp+14 yp+24 w312", "Health: -")
+        targetHealthBar := window.AddProgress("xp yp+22 w312 h18 cE57373 Background202020", 0)
+        targetResourceLabel := window.AddText("xp yp+28 w312", "Resource: -")
+        targetResourceBar := window.AddProgress("xp yp+22 w312 h18 cFFB74D Background202020", 0)
+        window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
+        targetMeta := window.AddText("xp yp+28 w312", "Level / Flags")
+        window.SetFont("s9 c" BC_Overlay.Palette.SectionTarget, "Consolas")
+        targetStatus := window.AddText("xp yp+24 w312", "State: -")
+        window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Consolas")
+        targetExtras := window.AddEdit("xp yp+24 w312 r4 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
+
+        window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionReader, "Consolas")
+        readerGroup := window.AddGroupBox("xm y+16 w720 h96", "Reader")
+        window.SetFont("s10 c" BC_Overlay.Palette.Header, "Consolas")
+        transportText := window.AddText("xp+14 yp+24 w340 h48", "")
+        window.SetFont("s10 c" BC_Overlay.Palette.CaptureText, "Consolas")
+        captureText := window.AddText("x+m yp w340 h48", "")
+        window.SetFont("s9 c" BC_Overlay.Palette.Footer, "Consolas")
+        footer := window.AddText("xp yp+52 w694", "Close the window to exit this HUD preview.")
+
+        window.OnEvent("Close", BC_Overlay.OnWindowClosed)
+        window.OnEvent("Escape", BC_Overlay.OnWindowClosed)
+        refreshButton.OnEvent("Click", BC_Overlay.OnRefreshClicked)
+        copyPathButton.OnEvent("Click", BC_Overlay.OnCopyStatePathClicked)
+        copySummaryButton.OnEvent("Click", BC_Overlay.OnCopySummaryClicked)
+        closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
+
+        BC_Overlay.Window := window
+        BC_Overlay.Controls := {
+            Header: header,
+            Status: status,
+            LiveMode: liveMode,
+            RefreshButton: refreshButton,
+            CopyPathButton: copyPathButton,
+            CopySummaryButton: copySummaryButton,
+            CloseButton: closeButton,
+            CompareText: compareText,
+            PlayerHealthLabel: playerHealthLabel,
+            PlayerHealthBar: playerHealthBar,
+            PlayerResourceLabel: playerResourceLabel,
+            PlayerResourceBar: playerResourceBar,
+            PlayerMeta: playerMeta,
+            PlayerStatus: playerStatus,
+            PlayerOffense: playerOffense,
+            TargetHealthLabel: targetHealthLabel,
+            TargetHealthBar: targetHealthBar,
+            TargetResourceLabel: targetResourceLabel,
+            TargetResourceBar: targetResourceBar,
+            TargetMeta: targetMeta,
+            TargetStatus: targetStatus,
+            TargetExtras: targetExtras,
+            TransportText: transportText,
+            CaptureText: captureText,
+            Footer: footer
+        }
+
+        return window
+    }
+
     static OnWindowClosed(guiObj := "", *) {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
@@ -172,6 +301,7 @@ class BC_Overlay {
 
         BC_Overlay.Window := ""
         BC_Overlay.Controls := {}
+        BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.LastSnapshot := ""
     }
 
@@ -187,6 +317,7 @@ class BC_Overlay {
 
         BC_Overlay.Window := ""
         BC_Overlay.Controls := {}
+        BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.LastSnapshot := ""
     }
 
@@ -216,6 +347,7 @@ class BC_Overlay {
         BC_Overlay.LiveUiAutoCloseMs := 0
         BC_Overlay.LiveUiTickCount := 0
         BC_Overlay.LiveUiStartTick := 0
+        BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.ResetLiveUiHistory()
     }
 
@@ -233,7 +365,7 @@ class BC_Overlay {
             return
         }
 
-        BC_Overlay.UpdateFromSnapshot(BC_State.BuildSnapshot(), BC_Overlay.CurrentTitle)
+        BC_Overlay.RenderSnapshot(BC_State.BuildSnapshot(), BC_Overlay.CurrentTitle)
     }
 
     static OnCopyStatePathClicked(*) {
@@ -442,6 +574,37 @@ class BC_Overlay {
         return BC_Debug.Join(lines, "`r`n")
     }
 
+    static FormatHudCompareText(snapshot) {
+        return "Compare: " BC_State.BuildComparisonText(snapshot)
+    }
+
+    static FormatPlayerHudStatus(snapshot) {
+        return "State: " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))
+    }
+
+    static FormatTargetHudStatus(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return "State: none"
+        }
+        return "State: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot))
+    }
+
+    static FormatReaderFooter(snapshot) {
+        return (
+            "Seq "
+            BC_Overlay.SafeText(snapshot.sequence, "-")
+            " | "
+            BC_Overlay.SafeText(snapshot.searchMode, "-")
+            " | "
+            BC_Overlay.SafeText(snapshot.captureSource, "-")
+            " | capture "
+            BC_Overlay.SafeText(snapshot.captureMs, "-")
+            " ms | pipeline "
+            BC_Overlay.SafeText(snapshot.pipelineMs, "-")
+            " ms"
+        )
+    }
+
     static UpdateFromSnapshot(snapshot, title := "BarCode Reader Dashboard") {
         window := BC_Overlay.EnsureWindow(title)
         controls := BC_Overlay.Controls
@@ -492,6 +655,64 @@ class BC_Overlay {
         return window
     }
 
+    static UpdateHudFromSnapshot(snapshot, title := "BarCode Reader HUD") {
+        window := BC_Overlay.EnsureHudWindow(title)
+        controls := BC_Overlay.Controls
+        acceptedText := snapshot.accepted ? "ACCEPTED" : "REJECTED"
+        freshnessText := snapshot.accepted ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
+        searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
+        statusColor := snapshot.accepted
+            ? (snapshot.freshFrame ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusWarn)
+            : BC_Overlay.Palette.StatusBad
+        sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
+        confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
+        reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
+        BC_Overlay.CurrentTitle := title
+        BC_Overlay.LastSnapshot := snapshot
+
+        controls.Header.Text := title
+        try {
+            controls.Status.SetFont("c" statusColor, "Consolas")
+            controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
+        } catch {
+        }
+
+        controls.Status.Text := "Status: " acceptedText freshnessText searchText reasonText sequenceText confidenceText
+        controls.CompareText.Text := BC_Overlay.FormatHudCompareText(snapshot)
+        controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
+        controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+        controls.PlayerResourceLabel.Text := "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none")
+        controls.PlayerResourceBar.Value := BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+        controls.PlayerMeta.Text := BC_Overlay.FormatPlayerMeta(snapshot)
+        controls.PlayerStatus.Text := BC_Overlay.FormatPlayerHudStatus(snapshot)
+        controls.PlayerOffense.Value := BC_Overlay.FormatPlayerOffense(snapshot)
+
+        hasTarget := BC_Overlay.HasTarget(snapshot)
+        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -"
+        controls.TargetHealthBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0
+        controls.TargetResourceLabel.Text := hasTarget
+            ? ("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ") " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none"))
+            : "Resource: -"
+        controls.TargetResourceBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0
+        controls.TargetMeta.Text := BC_Overlay.FormatTargetMeta(snapshot)
+        controls.TargetStatus.Text := BC_Overlay.FormatTargetHudStatus(snapshot)
+        controls.TargetExtras.Value := BC_Overlay.FormatTargetExtras(snapshot)
+
+        controls.TransportText.Text := BC_Overlay.FormatTransportText(snapshot)
+        controls.CaptureText.Text := BC_Overlay.FormatCaptureText(snapshot)
+        controls.Footer.Text := BC_Overlay.FormatReaderFooter(snapshot) " | Summary: " BC_Config.LiveSummaryTextPath
+
+        window.Show()
+        return window
+    }
+
+    static RenderSnapshot(snapshot, title := "") {
+        if (BC_Overlay.SurfaceMode = "hud") {
+            return BC_Overlay.UpdateHudFromSnapshot(snapshot, title = "" ? "BarCode Reader HUD" : title)
+        }
+        return BC_Overlay.UpdateFromSnapshot(snapshot, title = "" ? "BarCode Reader Dashboard" : title)
+    }
+
     static ShowCurrentState(title := "BarCode Reader Dashboard", autoCloseMs := 0) {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
@@ -511,6 +732,34 @@ class BC_Overlay {
             ReportPath: BC_Config.LiveStateTextPath,
             Summary: {
                 Mode: "ui",
+                Accepted: snapshot.accepted,
+                Reason: snapshot.reason,
+                Sequence: snapshot.sequence,
+                SearchMode: snapshot.searchMode
+            }
+        }
+    }
+
+    static ShowCurrentHud(title := "BarCode Reader HUD", autoCloseMs := 0) {
+        BC_Overlay.StopLiveUiTimers()
+        BC_Overlay.ResetLiveUiState()
+        BC_Overlay.SurfaceMode := "hud"
+        BC_Overlay.LiveUiLastSnapshot := ""
+        snapshot := BC_State.BuildSnapshot()
+        BC_State.WriteSnapshot()
+        window := BC_Overlay.UpdateHudFromSnapshot(snapshot, title)
+
+        if (autoCloseMs > 0) {
+            SetTimer((*) => BC_Overlay.CloseWindow(), -autoCloseMs)
+        }
+
+        BC_Overlay.WaitUntilClosed()
+
+        return {
+            Success: snapshot.accepted,
+            ReportPath: BC_Config.LiveSummaryTextPath,
+            Summary: {
+                Mode: "hud",
                 Accepted: snapshot.accepted,
                 Reason: snapshot.reason,
                 Sequence: snapshot.sequence,
@@ -610,7 +859,7 @@ class BC_Overlay {
             snapshot := BC_State.BuildSnapshot()
             BC_Overlay.LiveUiLastSnapshot := snapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
-            BC_Overlay.UpdateFromSnapshot(snapshot, BC_Overlay.CurrentTitle)
+            BC_Overlay.RenderSnapshot(snapshot, BC_Overlay.CurrentTitle)
             BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
@@ -641,9 +890,14 @@ class BC_Overlay {
     }
 
     static StartLiveUi(source := "synthetic", path := "", cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("dashboard", source, path, cropX, cropY, intervalMs, autoCloseMs, title)
+    }
+
+    static StartLiveSurface(surfaceMode := "dashboard", source := "synthetic", path := "", cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
         BC_State.ResetLiveOutputs()
+        BC_Overlay.SurfaceMode := surfaceMode
         BC_Overlay.LiveUiMode := StrLower(source)
         BC_Overlay.LiveUiSourceLabel := BC_Overlay.LiveUiMode
         BC_Overlay.LiveUiIntervalMs := Max(25, Integer(intervalMs))
@@ -669,8 +923,16 @@ class BC_Overlay {
             throw Error("Unsupported liveui source: " source)
         }
 
-        windowTitle := title != "" ? title : ("BarCode Reader Dashboard | LiveUI | " BC_Overlay.LiveUiSourceLabel)
-        BC_Overlay.EnsureWindow(windowTitle)
+        windowTitle := title != ""
+            ? title
+            : (surfaceMode = "hud"
+                ? ("BarCode Reader HUD | LiveHUD | " BC_Overlay.LiveUiSourceLabel)
+                : ("BarCode Reader Dashboard | LiveUI | " BC_Overlay.LiveUiSourceLabel))
+        if (surfaceMode = "hud") {
+            BC_Overlay.EnsureHudWindow(windowTitle)
+        } else {
+            BC_Overlay.EnsureWindow(windowTitle)
+        }
         BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick 0 | Interval " BC_Overlay.LiveUiIntervalMs "ms"
 
         BC_Overlay.LiveUiTick()
@@ -678,9 +940,9 @@ class BC_Overlay {
 
         return {
             Success: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
-            ReportPath: BC_Config.LiveStateTextPath,
+            ReportPath: surfaceMode = "hud" ? BC_Config.LiveSummaryTextPath : BC_Config.LiveStateTextPath,
             Summary: {
-                Mode: "liveui",
+                Mode: surfaceMode = "hud" ? "livehud" : "liveui",
                 Accepted: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
                 Reason: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.reason : "",
                 Sequence: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.sequence : "",
@@ -699,6 +961,16 @@ class BC_Overlay {
         return BC_Overlay.ShowCurrentState("BarCode Reader Dashboard | BMP", autoCloseMs)
     }
 
+    static RunSyntheticHud(autoCloseMs := 0) {
+        BC_Tests.DecodeSyntheticHot()
+        return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | Synthetic", autoCloseMs)
+    }
+
+    static RunBmpHud(path, cropX := 0, cropY := 0, autoCloseMs := 0) {
+        BC_Tests.DecodeBmp(path, cropX, cropY)
+        return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | BMP", autoCloseMs)
+    }
+
     static RunLiveUiSynthetic(intervalMs := 250, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("synthetic", "", 0, 0, intervalMs, autoCloseMs, title)
     }
@@ -709,6 +981,18 @@ class BC_Overlay {
 
     static RunLiveUiLive(intervalMs := 250, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("live", "", 0, 0, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveHudSynthetic(intervalMs := 250, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("hud", "synthetic", "", 0, 0, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveHudBmp(path, cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("hud", "bmp", path, cropX, cropY, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveHudLive(intervalMs := 250, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("hud", "live", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 }
 
