@@ -209,6 +209,7 @@ class BC_Tests {
         firstSampleCaptureMs := ""
         firstSamplePipelineMs := ""
         firstRejectedReason := ""
+        firstRejectedResult := ""
         sampleIndex := 1
         sourcePreference := "auto"
         title := WinGetTitle("ahk_id " hwnd)
@@ -247,6 +248,9 @@ class BC_Tests {
                 if (firstRejectedReason = "") {
                     firstRejectedReason := validation.Reason
                 }
+                if !IsObject(firstRejectedResult) {
+                    firstRejectedResult := result
+                }
                 BC_Tests.IncrementCount(rejectReasons, validation.Reason)
             }
 
@@ -275,6 +279,9 @@ class BC_Tests {
         transport := details.HasOwnProp("Transport") ? details.Transport : {}
 
         BC_Debug.WriteBmp24(BC_Config.LiveCaptureBmpPath, lastResult.Image.Width, lastResult.Image.Height, lastResult.Image.Pixels)
+        if IsObject(firstRejectedResult) {
+            BC_Debug.WriteBmp24(BC_Config.LiveRejectBmpPath, firstRejectedResult.Image.Width, firstRejectedResult.Image.Height, firstRejectedResult.Image.Pixels)
+        }
 
         reportLines := []
         reportLines.Push("BarCode live decode report")
@@ -302,6 +309,7 @@ class BC_Tests {
         reportLines.Push("FirstAcceptedSequence: " firstAcceptedSequence)
         reportLines.Push("FirstRejectedReason: " firstRejectedReason)
         reportLines.Push("RejectReasonCounts: " BC_Tests.FormatCountMap(rejectReasons))
+        reportLines.Push("FirstRejectedBmp: " (IsObject(firstRejectedResult) ? BC_Config.LiveRejectBmpPath : "-"))
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
         reportLines.Push("LastConfidence: " validation.Confidence)
@@ -366,6 +374,7 @@ class BC_Tests {
         captureSources := Map()
         rejectReasons := Map()
         firstRejectedReason := ""
+        firstRejectedResult := ""
 
         BC_State.ResetLiveOutputs()
 
@@ -393,6 +402,9 @@ class BC_Tests {
                 if (firstRejectedReason = "") {
                     firstRejectedReason := validation.Reason
                 }
+                if !IsObject(firstRejectedResult) {
+                    firstRejectedResult := result
+                }
                 BC_Tests.IncrementCount(rejectReasons, validation.Reason)
             }
 
@@ -419,6 +431,9 @@ class BC_Tests {
         client := lastResult.Image.ClientRect
         validation := lastResult.Validation
         details := validation.Details
+        if IsObject(firstRejectedResult) {
+            BC_Debug.WriteBmp24(BC_Config.LiveWatchRejectBmpPath, firstRejectedResult.Image.Width, firstRejectedResult.Image.Height, firstRejectedResult.Image.Pixels)
+        }
         reportLines := []
         reportLines.Push("BarCode live watch report")
         reportLines.Push("WindowTitle: " title)
@@ -443,6 +458,7 @@ class BC_Tests {
         reportLines.Push("MaxPipelineMs: " maxPipelineMs)
         reportLines.Push("FirstRejectedReason: " firstRejectedReason)
         reportLines.Push("RejectReasonCounts: " BC_Tests.FormatCountMap(rejectReasons))
+        reportLines.Push("FirstRejectedBmp: " (IsObject(firstRejectedResult) ? BC_Config.LiveWatchRejectBmpPath : "-"))
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
         reportLines.Push("LastConfidence: " validation.Confidence)

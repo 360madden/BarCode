@@ -56,6 +56,8 @@ class BC_Config {
     static LiveReportPath := BC_Config.ReportDir "\phase2-live.txt"
     static LiveWatchReportPath := BC_Config.ReportDir "\phase2-watch.txt"
     static LiveCaptureBmpPath := BC_Config.ReportDir "\phase2-live-last-capture.bmp"
+    static LiveRejectBmpPath := BC_Config.ReportDir "\phase2-live-first-reject.bmp"
+    static LiveWatchRejectBmpPath := BC_Config.ReportDir "\phase2-watch-first-reject.bmp"
     static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
     static LiveStateJsonPath := BC_Config.StateDir "\latest-state.json"
     static LiveStateTextPath := BC_Config.StateDir "\latest-state.txt"
