@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.18
+version: 0.3.19
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -627,6 +627,9 @@ class BC_Overlay {
         )
         if BC_State.HasTarget(snapshot) {
             line .= "`r`nCompare " BC_State.BuildComparisonText(snapshot)
+            line .= "`r`nEdge " BC_State.BuildComparisonDeltaText(snapshot)
+        } else {
+            line .= "`r`nCompare player-only"
         }
         return line
     }
@@ -686,11 +689,15 @@ class BC_Overlay {
         lines.Push("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ")")
         lines.Push("State: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
         lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
+        lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot))
         return BC_Debug.Join(lines, "`r`n")
     }
 
     static FormatHudCompareText(snapshot) {
-        return "Compare: " BC_State.BuildComparisonText(snapshot)
+        if !BC_Overlay.HasTarget(snapshot) {
+            return "Compare: player-only"
+        }
+        return "Compare: " BC_State.BuildComparisonText(snapshot) " | Edge: " BC_State.BuildComparisonDeltaText(snapshot)
     }
 
     static FormatPlayerHudStatus(snapshot) {
@@ -709,9 +716,13 @@ class BC_Overlay {
             "Seq "
             BC_Overlay.SafeText(snapshot.sequence, "-")
             " | "
+            StrUpper(BC_Overlay.FreshnessLabel(snapshot))
+            " | "
             BC_Overlay.SafeText(snapshot.searchMode, "-")
             " | "
             BC_Overlay.SafeText(snapshot.captureSource, "-")
+            " | "
+            BC_Overlay.SafeText(snapshot.captureRouteReason, "-")
             " | capture "
             BC_Overlay.SafeText(snapshot.captureMs, "-")
             " ms | pipeline "

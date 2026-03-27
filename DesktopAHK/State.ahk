@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.18
+version: 0.3.19
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -470,6 +470,7 @@ class BC_State {
             )
             lines.Push("Target state: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
             lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
+            lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot))
         } else {
             lines.Push("Target: none")
         }
@@ -511,6 +512,7 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("playerStateText", BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))))
         fields.Push(BC_State.JsonStringField("targetStateText", BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot))))
         fields.Push(BC_State.JsonStringField("comparisonText", BC_State.BuildComparisonText(snapshot)))
+        fields.Push(BC_State.JsonStringField("comparisonDeltaText", BC_State.BuildComparisonDeltaText(snapshot)))
         fields.Push(BC_State.JsonStringField("playerCallingName", snapshot.playerCallingName))
         fields.Push(BC_State.JsonStringField("playerRoleName", snapshot.playerRoleName))
         fields.Push(BC_State.JsonNumberField("playerLevel", snapshot.playerLevel))
@@ -669,18 +671,85 @@ class BC_State {
             return "player-only"
         }
 
+        playerResourceLabel := BC_State.DefaultText(snapshot.playerResourceKindName, "resource")
+        targetResourceLabel := BC_State.DefaultText(snapshot.targetResourceKindName, "resource")
+        resourceText := (playerResourceLabel = targetResourceLabel)
+            ? (
+                playerResourceLabel
+                " "
+                BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+                " vs "
+                BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+            )
+            : (
+                playerResourceLabel
+                " "
+                BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+                " vs "
+                targetResourceLabel
+                " "
+                BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+            )
+
+        levelText := ""
+        if (snapshot.playerLevel != "" || snapshot.targetLevel != "") {
+            levelText := (
+                " | L "
+                BC_State.DefaultText(snapshot.playerLevel, "-")
+                " vs "
+                BC_State.DefaultText(snapshot.targetLevel, "-")
+            )
+        }
+
         return (
             "HP "
             BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
             " vs "
             BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
             " | "
-            BC_State.DefaultText(snapshot.playerResourceKindName, "resource")
-            " "
-            BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
-            " vs "
-            BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+            resourceText
+            levelText
         )
+    }
+
+    static BuildComparisonDeltaText(snapshot) {
+        if !BC_State.HasTarget(snapshot) {
+            return "player-only"
+        }
+
+        parts := []
+        hpDelta := BC_State.PercentDeltaText(
+            snapshot.playerHealthCurrent,
+            snapshot.playerHealthMax,
+            snapshot.targetHealthCurrent,
+            snapshot.targetHealthMax
+        )
+        if (hpDelta != "") {
+            parts.Push("HP " hpDelta)
+        }
+
+        resourceDelta := BC_State.PercentDeltaText(
+            snapshot.playerResourceCurrent,
+            snapshot.playerResourceMax,
+            snapshot.targetResourceCurrent,
+            snapshot.targetResourceMax
+        )
+        if (resourceDelta != "") {
+            resourceLabel := BC_State.DefaultText(snapshot.playerResourceKindName, "resource")
+            targetResourceLabel := BC_State.DefaultText(snapshot.targetResourceKindName, "resource")
+            if (resourceLabel = targetResourceLabel) {
+                parts.Push(resourceLabel " " resourceDelta)
+            } else {
+                parts.Push(resourceLabel " " resourceDelta " vs " targetResourceLabel)
+            }
+        }
+
+        levelDelta := BC_State.SignedDeltaText(snapshot.playerLevel, snapshot.targetLevel)
+        if (levelDelta != "") {
+            parts.Push("L " levelDelta)
+        }
+
+        return parts.Length > 0 ? BC_Debug.Join(parts, " | ") : "unavailable"
     }
 
     static GetRecentHistory(limit := 8) {
@@ -1069,6 +1138,28 @@ class BC_State {
     static PercentText(current, maximum, fallback := "-") {
         pct := BC_State.Percent(current, maximum)
         return pct = "" ? fallback : (pct "%")
+    }
+
+    static PercentDeltaText(leftCurrent, leftMaximum, rightCurrent, rightMaximum) {
+        leftPct := BC_State.Percent(leftCurrent, leftMaximum)
+        rightPct := BC_State.Percent(rightCurrent, rightMaximum)
+        if (leftPct = "" || rightPct = "") {
+            return ""
+        }
+
+        return BC_State.SignedNumberText(leftPct - rightPct)
+    }
+
+    static SignedDeltaText(leftValue, rightValue) {
+        if (leftValue = "" || rightValue = "") {
+            return ""
+        }
+        return BC_State.SignedNumberText(Integer(leftValue) - Integer(rightValue))
+    }
+
+    static SignedNumberText(value) {
+        numericValue := Integer(value)
+        return (numericValue >= 0 ? "+" : "") numericValue
     }
 
     static HexText(value, minDigits := 0) {
