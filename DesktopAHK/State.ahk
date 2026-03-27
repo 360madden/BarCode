@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.0
+version: 0.3.4
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -56,6 +56,8 @@ class BC_State {
         BC_State.History := []
         BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonPath)
         BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonlPath)
+        BC_State.DeleteIfPresent(BC_Config.LiveSummaryJsonPath)
+        BC_State.DeleteIfPresent(BC_Config.LiveSummaryTextPath)
         BC_State.WriteSnapshot()
     }
 
@@ -162,6 +164,8 @@ class BC_State {
         snapshot := BC_State.BuildSnapshot()
         BC_Debug.WriteText(BC_Config.LiveStateJsonPath, BC_State.BuildSnapshotJson(snapshot, true))
         BC_Debug.WriteText(BC_Config.LiveStateTextPath, BC_State.BuildSnapshotText(snapshot))
+        BC_Debug.WriteText(BC_Config.LiveSummaryJsonPath, BC_State.BuildOperatorSummaryJson(snapshot, true))
+        BC_Debug.WriteText(BC_Config.LiveSummaryTextPath, BC_State.BuildOperatorSummaryText(snapshot))
         if (snapshot.timestampUtc != "") {
             BC_State.AppendHistorySnapshot(snapshot)
         }
@@ -371,6 +375,108 @@ class BC_State {
         return BC_Debug.Join(lines, "`r`n")
     }
 
+    static BuildOperatorSummaryText(snapshot) {
+        lines := []
+        freshnessText := StrUpper(BC_State.FreshnessLabel(snapshot))
+        lines.Push("BarCode HUD summary")
+        lines.Push(
+            "Status: "
+            (snapshot.accepted ? "ACCEPTED" : "REJECTED")
+            " | " freshnessText
+            " | seq " BC_State.DefaultText(snapshot.sequence, "-")
+            " | conf " BC_State.DefaultText(snapshot.confidence, "-")
+        )
+        lines.Push(
+            "Player: L" BC_State.DefaultText(snapshot.playerLevel, "-")
+            " | " BC_State.DefaultText(snapshot.playerCallingName, "unknown")
+            " | " BC_State.DefaultText(snapshot.playerRoleName, "unknown")
+            " | HP " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+            " | " BC_State.DefaultText(snapshot.playerResourceKindName, "none")
+            " " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+        )
+        lines.Push(
+            "Player offense: atk " BC_State.DefaultText(snapshot.playerPowerAttack, "0")
+            " | critAtk " BC_State.DefaultText(snapshot.playerCritAttack, "0")
+            " | spell " BC_State.DefaultText(snapshot.playerPowerSpell, "0")
+            " | critSpell " BC_State.DefaultText(snapshot.playerCritSpell, "0")
+            " | critPower " BC_State.DefaultText(snapshot.playerCritPower, "0")
+            " | hit " BC_State.DefaultText(snapshot.playerHit, "0")
+        )
+
+        if BC_State.HasTarget(snapshot) {
+            lines.Push(
+                "Target: L" BC_State.DefaultText(snapshot.targetLevel, "-")
+                " | HP " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
+                " | " BC_State.DefaultText(snapshot.targetResourceKindName, "none")
+                " " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+                " | flags " BC_State.HexText(snapshot.targetFlags, 2)
+            )
+        } else {
+            lines.Push("Target: none")
+        }
+
+        lines.Push(
+            "Reader: " BC_State.DefaultText(snapshot.searchMode, "-")
+            " | " BC_State.DefaultText(snapshot.captureSource, "-")
+            " | capture " BC_State.DefaultText(snapshot.captureMs, "-") " ms"
+            " | pipeline " BC_State.DefaultText(snapshot.pipelineMs, "-") " ms"
+            " | reason " BC_State.DefaultText(snapshot.reason, "-")
+        )
+        lines.Push(
+            "Session: " BC_State.DefaultText(snapshot.sessionSampleCount, "0")
+            " samples | accepted " BC_State.DefaultText(snapshot.sessionAcceptedCount, "0")
+            " | rejected " BC_State.DefaultText(snapshot.sessionRejectedCount, "0")
+            " | streak " BC_State.DefaultText(snapshot.acceptedStreak, "0")
+            "/" BC_State.DefaultText(snapshot.rejectedStreak, "0")
+        )
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
+    static BuildOperatorSummaryJson(snapshot, pretty := true) {
+        fields := []
+        fields.Push(BC_State.JsonStringField("timestampUtc", snapshot.timestampUtc))
+        fields.Push(BC_State.JsonBoolField("accepted", snapshot.accepted))
+        fields.Push(BC_State.JsonStringField("freshness", BC_State.FreshnessLabel(snapshot)))
+        fields.Push(BC_State.JsonStringField("reason", snapshot.reason))
+        fields.Push(BC_State.JsonNumberField("confidence", snapshot.confidence))
+        fields.Push(BC_State.JsonNumberField("sequence", snapshot.sequence))
+        fields.Push(BC_State.JsonBoolField("targetPresent", BC_State.HasTarget(snapshot)))
+        fields.Push(BC_State.JsonStringField("playerCallingName", snapshot.playerCallingName))
+        fields.Push(BC_State.JsonStringField("playerRoleName", snapshot.playerRoleName))
+        fields.Push(BC_State.JsonNumberField("playerLevel", snapshot.playerLevel))
+        fields.Push(BC_State.JsonStringField("playerResourceKindName", snapshot.playerResourceKindName))
+        fields.Push(BC_State.JsonNumberField("playerHealthCurrent", snapshot.playerHealthCurrent))
+        fields.Push(BC_State.JsonNumberField("playerHealthMax", snapshot.playerHealthMax))
+        fields.Push(BC_State.JsonNumberField("playerResourceCurrent", snapshot.playerResourceCurrent))
+        fields.Push(BC_State.JsonNumberField("playerResourceMax", snapshot.playerResourceMax))
+        fields.Push(BC_State.JsonNumberField("playerPowerAttack", snapshot.playerPowerAttack))
+        fields.Push(BC_State.JsonNumberField("playerCritAttack", snapshot.playerCritAttack))
+        fields.Push(BC_State.JsonNumberField("playerPowerSpell", snapshot.playerPowerSpell))
+        fields.Push(BC_State.JsonNumberField("playerCritSpell", snapshot.playerCritSpell))
+        fields.Push(BC_State.JsonNumberField("playerCritPower", snapshot.playerCritPower))
+        fields.Push(BC_State.JsonNumberField("playerHit", snapshot.playerHit))
+        fields.Push(BC_State.JsonNumberField("targetLevel", snapshot.targetLevel))
+        fields.Push(BC_State.JsonStringField("targetResourceKindName", snapshot.targetResourceKindName))
+        fields.Push(BC_State.JsonNumberField("targetHealthCurrent", snapshot.targetHealthCurrent))
+        fields.Push(BC_State.JsonNumberField("targetHealthMax", snapshot.targetHealthMax))
+        fields.Push(BC_State.JsonNumberField("targetResourceCurrent", snapshot.targetResourceCurrent))
+        fields.Push(BC_State.JsonNumberField("targetResourceMax", snapshot.targetResourceMax))
+        fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
+        fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
+        fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
+        fields.Push(BC_State.JsonNumberField("captureMs", snapshot.captureMs))
+        fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
+        fields.Push(BC_State.JsonNumberField("sessionSampleCount", snapshot.sessionSampleCount))
+        fields.Push(BC_State.JsonNumberField("sessionAcceptedCount", snapshot.sessionAcceptedCount))
+        fields.Push(BC_State.JsonNumberField("sessionRejectedCount", snapshot.sessionRejectedCount))
+        fields.Push(BC_State.JsonNumberField("acceptedStreak", snapshot.acceptedStreak))
+        fields.Push(BC_State.JsonNumberField("rejectedStreak", snapshot.rejectedStreak))
+        if (pretty) {
+            return "{`r`n  " BC_Debug.Join(fields, ",`r`n  ") "`r`n}"
+        }
+        return "{" BC_Debug.Join(fields, ",") "}"
+    }
+
     static BuildSnapshotSummary(snapshot) {
         acceptedText := snapshot.accepted ? "OK" : "BAD"
         sequenceText := BC_State.NumberText(snapshot.sequence)
@@ -391,6 +497,29 @@ class BC_State {
             " | conf " confidenceText
             " | " reasonText
         )
+    }
+
+    static HasTarget(snapshot) {
+        if (snapshot.targetHealthMax != "" && Integer(snapshot.targetHealthMax) > 0) {
+            return true
+        }
+        if (snapshot.targetLevel != "" && Integer(snapshot.targetLevel) > 0) {
+            return true
+        }
+        if (snapshot.targetFlags != "" && Integer(snapshot.targetFlags) > 0) {
+            return true
+        }
+        return false
+    }
+
+    static FreshnessLabel(snapshot) {
+        if !snapshot.accepted {
+            return "bad"
+        }
+        if (snapshot.sequenceChanged = "") {
+            return "unknown"
+        }
+        return snapshot.freshFrame ? "fresh" : "repeat"
     }
 
     static GetRecentHistory(limit := 8) {
@@ -726,8 +855,34 @@ class BC_State {
         return value ? "true" : "false"
     }
 
+    static DefaultText(value, fallback := "-") {
+        text := BC_State.TextValue(value)
+        return text = "" ? fallback : text
+    }
+
     static PairText(left, right) {
         return BC_State.NumberText(left) "/" BC_State.NumberText(right)
+    }
+
+    static PairOrDefaultText(left, right, fallback := "-/-") {
+        leftText := BC_State.NumberText(left)
+        rightText := BC_State.NumberText(right)
+        if (leftText = "" && rightText = "") {
+            return fallback
+        }
+        return leftText "/" rightText
+    }
+
+    static HexText(value, minDigits := 0) {
+        if (value = "") {
+            return ""
+        }
+
+        integerValue := Integer(value)
+        if (minDigits > 0) {
+            return "0x" Format("{:0" minDigits "X}", integerValue)
+        }
+        return "0x" Format("{:X}", integerValue)
     }
 
     static NumberText(value) {

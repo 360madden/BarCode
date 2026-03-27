@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Config.ahk
-version: 0.3.3
+version: 0.3.4
 purpose: Defines shared configuration values for the scoped BarCode player-target HUD reader harness.
 dependencies: AutoHotkey v2.0+
 important assumptions: The scoped BarCode reader uses fixed-profile BC-Strip/1 geometry, but BMP/live decoding may need to solve a scaled top-left symbol panel inside a larger screenshot.
@@ -20,7 +20,7 @@ BC_ConfigResolveDataRoot() {
 
 class BC_Config {
     static AppName := "BarCode"
-    static AppVersion := "0.3.3"
+    static AppVersion := "0.3.4"
     static ProtocolVersion := 1
     static LayoutId := 1
     static ProfileId := 1
@@ -61,6 +61,8 @@ class BC_Config {
     static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
     static LiveStateJsonPath := BC_Config.StateDir "\latest-state.json"
     static LiveStateTextPath := BC_Config.StateDir "\latest-state.txt"
+    static LiveSummaryJsonPath := BC_Config.StateDir "\latest-summary.json"
+    static LiveSummaryTextPath := BC_Config.StateDir "\latest-summary.txt"
     static LockedGeometryPath := BC_Config.StateDir "\locked-geometry.txt"
     static LiveHistoryJsonPath := BC_Config.StateDir "\recent-history.json"
     static LiveHistoryJsonlPath := BC_Config.StateDir "\recent-history.jsonl"

@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.3
+version: 0.3.4
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -72,7 +72,7 @@ class BC_Overlay {
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
         refreshButton := window.AddButton("x+m yp-2 w80", "Refresh")
         copyPathButton := window.AddButton("x+m yp w110", "Copy State Path")
-        copySnapshotButton := window.AddButton("x+m yp w120", "Copy Snapshot")
+        copySummaryButton := window.AddButton("x+m yp w120", "Copy Summary")
         closeButton := window.AddButton("x+m yp w70", "Close")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionPlayer, "Consolas")
@@ -125,7 +125,7 @@ class BC_Overlay {
         window.OnEvent("Escape", BC_Overlay.OnWindowClosed)
         refreshButton.OnEvent("Click", BC_Overlay.OnRefreshClicked)
         copyPathButton.OnEvent("Click", BC_Overlay.OnCopyStatePathClicked)
-        copySnapshotButton.OnEvent("Click", BC_Overlay.OnCopySnapshotClicked)
+        copySummaryButton.OnEvent("Click", BC_Overlay.OnCopySummaryClicked)
         closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
 
         BC_Overlay.Window := window
@@ -135,7 +135,7 @@ class BC_Overlay {
             LiveMode: liveMode,
             RefreshButton: refreshButton,
             CopyPathButton: copyPathButton,
-            CopySnapshotButton: copySnapshotButton,
+            CopySummaryButton: copySummaryButton,
             CloseButton: closeButton,
             PlayerHealthLabel: playerHealthLabel,
             PlayerHealthBar: playerHealthBar,
@@ -241,10 +241,10 @@ class BC_Overlay {
         BC_Overlay.SetFooter("State path copied: " BC_Config.LiveStateTextPath)
     }
 
-    static OnCopySnapshotClicked(*) {
+    static OnCopySummaryClicked(*) {
         if IsObject(BC_Overlay.LastSnapshot) {
-            A_Clipboard := BC_State.BuildSnapshotText(BC_Overlay.LastSnapshot)
-            BC_Overlay.SetFooter("Snapshot text copied to clipboard.")
+            A_Clipboard := BC_State.BuildOperatorSummaryText(BC_Overlay.LastSnapshot)
+            BC_Overlay.SetFooter("Summary text copied to clipboard.")
         }
     }
 
@@ -476,9 +476,9 @@ class BC_Overlay {
         controls.TransportText.Text := BC_Overlay.FormatTransportText(snapshot)
         controls.CaptureText.Text := BC_Overlay.FormatCaptureText(snapshot)
         controls.SessionText.Text := BC_Overlay.FormatSessionText(snapshot)
-        controls.DetailsBody.Value := BC_State.BuildSnapshotText(snapshot)
+        controls.DetailsBody.Value := BC_State.BuildOperatorSummaryText(snapshot) "`r`n`r`n" BC_State.BuildSnapshotText(snapshot)
         controls.HistoryBody.Value := BC_Overlay.RenderLiveUiHistory()
-        controls.Footer.Text := "State: " BC_Config.LiveStateTextPath " | Lock: " BC_Config.LockedGeometryPath
+        controls.Footer.Text := "Summary: " BC_Config.LiveSummaryTextPath " | State: " BC_Config.LiveStateTextPath
 
         window.Show()
         return window

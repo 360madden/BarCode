@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.3
+version: 0.3.4
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -127,6 +127,16 @@ class BC_Tests {
 
         report := BC_Debug.Join(reportLines, "`r`n")
         BC_Debug.WriteText(BC_Config.SmokeReportPath, report)
+        BC_State.Update(goodResult.Validation, {
+            Image: goodResult.Image,
+            Timings: {
+                CaptureMs: 0,
+                PipelineMs: 0,
+                AttemptCount: 1
+            },
+            CaptureAttempts: [goodResult.Image.SourceKind],
+            SampleIndex: 1
+        }, true)
 
         return {
             Success: success,
@@ -148,6 +158,16 @@ class BC_Tests {
         result := BC_Tests.DecodeBmp(path, cropX, cropY)
         validation := result.Validation
         details := validation.Details
+        BC_State.Update(validation, {
+            Image: result.Image,
+            Timings: {
+                CaptureMs: 0,
+                PipelineMs: 0,
+                AttemptCount: 1
+            },
+            CaptureAttempts: [result.Image.SourceKind],
+            SampleIndex: 1
+        }, true)
         reportLines := []
         reportLines.Push("BarCode fixed BMP decode report")
         reportLines.Push("Input: " path)

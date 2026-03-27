@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.3
+version: 0.3.4
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -21,6 +21,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $mainScript = Join-Path $repoRoot 'DesktopAHK\Main.ahk'
 $exe = 'C:\Users\mrkoo\AppData\Local\Programs\AutoHotkey\v2\AutoHotkey64.exe'
 $latestRunPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\latest-run.txt'
+$latestSummaryPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-summary.txt'
 
 function Format-ProcessArgument {
     param([string]$Value)
@@ -91,6 +92,11 @@ if ($reportPath) {
         Write-Output '--- REPORT ---'
         Get-Content -LiteralPath $reportPath -ErrorAction SilentlyContinue
     }
+}
+
+if (($process.ExitCode -eq 0) -and ($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
+    Write-Output '--- SUMMARY ---'
+    Get-Content -LiteralPath $latestSummaryPath -ErrorAction SilentlyContinue
 }
 
 exit $process.ExitCode

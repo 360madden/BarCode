@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.3
+version: 0.3.4
 purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
 important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
@@ -14,6 +14,7 @@ BC_MainUsageText() {
     lines.Push("BarCode DesktopAHK usage")
     lines.Push("  smoke")
     lines.Push("  bmp <path> [cropX] [cropY]")
+    lines.Push("  summary")
     lines.Push("  ui [autoCloseMs]")
     lines.Push("  uibmp <path> [cropX] [cropY] [autoCloseMs]")
     lines.Push("  live [sampleCount] [sleepMs]")
@@ -77,6 +78,14 @@ BC_MainBuildSummaryText(mode, result) {
         return BC_Debug.Join(lines, "`r`n")
     }
 
+    if (summary.HasOwnProp("Mode") && summary.Mode = "summary") {
+        if (summary.HasOwnProp("Text") && summary.Text != "") {
+            return summary.Text
+        }
+        lines.Push("Summary: unavailable")
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
     if (summary.HasOwnProp("Mode") && (summary.Mode = "live" || summary.Mode = "watch")) {
         lines.Push("AcceptedSamples: " summary.AcceptedSamples)
         lines.Push("RejectedSamples: " summary.RejectedSamples)
@@ -128,6 +137,18 @@ try {
         result := {
             Success: true,
             ReportPath: BC_Config.LatestRunPath
+        }
+    } else if (mode = "summary") {
+        if !FileExist(BC_Config.LiveSummaryTextPath) {
+            throw Error("No summary has been written yet. Run smoke, bmp, live, or watch first.")
+        }
+        result := {
+            Success: true,
+            ReportPath: BC_Config.LiveSummaryTextPath,
+            Summary: {
+                Mode: "summary",
+                Text: FileRead(BC_Config.LiveSummaryTextPath, "UTF-8")
+            }
         }
     } else if (mode = "bmp") {
         if (A_Args.Length < 2) {
