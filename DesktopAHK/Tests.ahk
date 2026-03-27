@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.1
+version: 0.3.3
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -132,7 +132,15 @@ class BC_Tests {
             Success: success,
             ReportPath: BC_Config.SmokeReportPath,
             GoodFixturePath: BC_Config.GoodFixturePath,
-            CorruptFixturePath: BC_Config.CorruptFixturePath
+            CorruptFixturePath: BC_Config.CorruptFixturePath,
+            Summary: {
+                Mode: "smoke",
+                Success: success,
+                GoodAccepted: goodResult.Validation.IsAccepted,
+                GoodReason: goodResult.Validation.Reason,
+                CorruptAccepted: corruptResult.Validation.IsAccepted,
+                CorruptReason: corruptResult.Validation.Reason
+            }
         }
     }
 
@@ -181,7 +189,15 @@ class BC_Tests {
 
         return {
             Success: validation.IsAccepted,
-            ReportPath: BC_Config.FixedBmpReportPath
+            ReportPath: BC_Config.FixedBmpReportPath,
+            Summary: {
+                Mode: "bmp",
+                Accepted: validation.IsAccepted,
+                Reason: validation.Reason,
+                SearchMode: details.SearchMode,
+                Sequence: details.HasOwnProp("Transport") ? details.Transport.Sequence : "",
+                PageId: details.HasOwnProp("Transport") ? details.Transport.PageId : ""
+            }
         }
     }
 
@@ -344,7 +360,17 @@ class BC_Tests {
 
         return {
             Success: acceptedCount > 0,
-            ReportPath: BC_Config.LiveReportPath
+            ReportPath: BC_Config.LiveReportPath,
+            Summary: {
+                Mode: "live",
+                AcceptedSamples: acceptedCount,
+                RejectedSamples: rejectedCount,
+                LockedSamples: lockedCount,
+                SearchedSamples: searchedCount,
+                CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                FallbackSamples: fallbackSampleCount,
+                LastReason: validation.Reason
+            }
         }
     }
 
@@ -475,7 +501,17 @@ class BC_Tests {
 
         return {
             Success: acceptedCount > 0,
-            ReportPath: BC_Config.LiveWatchReportPath
+            ReportPath: BC_Config.LiveWatchReportPath,
+            Summary: {
+                Mode: "watch",
+                AcceptedSamples: acceptedCount,
+                RejectedSamples: rejectedCount,
+                LockedSamples: lockedCount,
+                SearchedSamples: searchedCount,
+                CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                FallbackSamples: fallbackSampleCount,
+                LastReason: validation.Reason
+            }
         }
     }
 

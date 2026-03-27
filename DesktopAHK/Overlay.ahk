@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.1
+version: 0.3.3
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -500,7 +500,14 @@ class BC_Overlay {
 
         return {
             Success: snapshot.accepted,
-            ReportPath: BC_Config.LiveStateTextPath
+            ReportPath: BC_Config.LiveStateTextPath,
+            Summary: {
+                Mode: "ui",
+                Accepted: snapshot.accepted,
+                Reason: snapshot.reason,
+                Sequence: snapshot.sequence,
+                SearchMode: snapshot.searchMode
+            }
         }
     }
 
@@ -663,7 +670,14 @@ class BC_Overlay {
 
         return {
             Success: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
-            ReportPath: BC_Config.LiveStateTextPath
+            ReportPath: BC_Config.LiveStateTextPath,
+            Summary: {
+                Mode: "liveui",
+                Accepted: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
+                Reason: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.reason : "",
+                Sequence: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.sequence : "",
+                SearchMode: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.searchMode : ""
+            }
         }
     }
 

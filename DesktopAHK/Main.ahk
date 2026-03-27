@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.1
+version: 0.3.3
 purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
 important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
@@ -22,6 +22,84 @@ BC_MainUsageText() {
     lines.Push("  liveui bmp <path> [cropX] [cropY] [intervalMs] [autoCloseMs]")
     lines.Push("  liveui live [intervalMs] [autoCloseMs]")
     lines.Push("  help")
+    return BC_Debug.Join(lines, "`r`n")
+}
+
+BC_MainWriteStdOut(text) {
+    try {
+        stdout := FileOpen("*", "w", "UTF-8")
+        if IsObject(stdout) {
+            stdout.Write(text "`r`n")
+            stdout.Close()
+            return
+        }
+    } catch {
+    }
+
+    try {
+        FileAppend(text "`r`n", "*", "UTF-8")
+    } catch {
+    }
+}
+
+BC_MainBuildSummaryText(mode, result) {
+    lines := []
+    summary := IsObject(result) && result.HasOwnProp("Summary") ? result.Summary : ""
+
+    lines.Push("BarCode DesktopAHK")
+    lines.Push("Mode: " mode)
+    lines.Push("Success: " ((IsObject(result) && result.HasOwnProp("Success") && result.Success) ? "true" : "false"))
+    if (IsObject(result) && result.HasOwnProp("ReportPath")) {
+        lines.Push("Report: " result.ReportPath)
+    }
+
+    if !IsObject(summary) {
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
+    if (summary.HasOwnProp("Mode") && summary.Mode = "smoke") {
+        lines.Push("GoodAccepted: " (summary.GoodAccepted ? "true" : "false"))
+        lines.Push("CorruptAccepted: " (summary.CorruptAccepted ? "true" : "false"))
+        lines.Push("CorruptReason: " summary.CorruptReason)
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
+    if (summary.HasOwnProp("Mode") && summary.Mode = "bmp") {
+        lines.Push("Accepted: " (summary.Accepted ? "true" : "false"))
+        lines.Push("Reason: " summary.Reason)
+        lines.Push("SearchMode: " summary.SearchMode)
+        if (summary.Sequence != "") {
+            lines.Push("Sequence: " summary.Sequence)
+        }
+        if (summary.PageId != "") {
+            lines.Push("PageId: " summary.PageId)
+        }
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
+    if (summary.HasOwnProp("Mode") && (summary.Mode = "live" || summary.Mode = "watch")) {
+        lines.Push("AcceptedSamples: " summary.AcceptedSamples)
+        lines.Push("RejectedSamples: " summary.RejectedSamples)
+        lines.Push("LockedSamples: " summary.LockedSamples)
+        lines.Push("SearchedSamples: " summary.SearchedSamples)
+        lines.Push("CaptureSource: " summary.CaptureSource)
+        lines.Push("FallbackSamples: " summary.FallbackSamples)
+        lines.Push("LastReason: " summary.LastReason)
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
+    if (summary.HasOwnProp("Mode") && (summary.Mode = "ui" || summary.Mode = "liveui")) {
+        lines.Push("Accepted: " (summary.Accepted ? "true" : "false"))
+        lines.Push("Reason: " summary.Reason)
+        if (summary.Sequence != "") {
+            lines.Push("Sequence: " summary.Sequence)
+        }
+        if (summary.SearchMode != "") {
+            lines.Push("SearchMode: " summary.SearchMode)
+        }
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
     return BC_Debug.Join(lines, "`r`n")
 }
 
@@ -147,9 +225,11 @@ try {
     latestLines.Push("Success=" (result.Success ? "true" : "false"))
     latestLines.Push("Report=" result.ReportPath)
     BC_Debug.WriteText(BC_Config.LatestRunPath, BC_Debug.Join(latestLines, "`r`n"))
+    BC_MainWriteStdOut(BC_MainBuildSummaryText(mode, result))
     ExitApp(result.Success ? 0 : 1)
 } catch as err {
     BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode DesktopAHK run failed`r`n" err.Message "`r`n" err.Stack)
+    BC_MainWriteStdOut("BarCode DesktopAHK`r`nMode: failed`r`nSuccess: false`r`nError: " err.Message)
     ExitApp(1)
 }
 
