@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.15
+version: 0.3.16
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -89,8 +89,9 @@ class BC_Overlay {
 
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
         refreshButton := window.AddButton("x+m yp-2 w80", "Refresh")
-        copyPathButton := window.AddButton("x+m yp w110", "Copy State Path")
-        copySummaryButton := window.AddButton("x+m yp w120", "Copy Summary")
+        copyPathButton := window.AddButton("x+m yp w100", "Copy State Path")
+        copySummaryButton := window.AddButton("x+m yp w110", "Copy Summary")
+        copyHistoryButton := window.AddButton("x+m yp w100", "Copy History")
         closeButton := window.AddButton("x+m yp w70", "Close")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionPlayer, "Consolas")
@@ -144,6 +145,7 @@ class BC_Overlay {
         refreshButton.OnEvent("Click", BC_Overlay.OnRefreshClicked)
         copyPathButton.OnEvent("Click", BC_Overlay.OnCopyStatePathClicked)
         copySummaryButton.OnEvent("Click", BC_Overlay.OnCopySummaryClicked)
+        copyHistoryButton.OnEvent("Click", BC_Overlay.OnCopyHistoryClicked)
         closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
 
         BC_Overlay.Window := window
@@ -154,6 +156,7 @@ class BC_Overlay {
             RefreshButton: refreshButton,
             CopyPathButton: copyPathButton,
             CopySummaryButton: copySummaryButton,
+            CopyHistoryButton: copyHistoryButton,
             CloseButton: closeButton,
             PlayerHealthLabel: playerHealthLabel,
             PlayerHealthBar: playerHealthBar,
@@ -207,8 +210,9 @@ class BC_Overlay {
 
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
         refreshButton := window.AddButton("x+m yp-2 w80", "Refresh")
-        copyPathButton := window.AddButton("x+m yp w110", "Copy State Path")
-        copySummaryButton := window.AddButton("x+m yp w120", "Copy Summary")
+        copyPathButton := window.AddButton("x+m yp w100", "Copy State Path")
+        copySummaryButton := window.AddButton("x+m yp w110", "Copy Summary")
+        copyHistoryButton := window.AddButton("x+m yp w100", "Copy History")
         closeButton := window.AddButton("x+m yp w70", "Close")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
@@ -259,6 +263,7 @@ class BC_Overlay {
         refreshButton.OnEvent("Click", BC_Overlay.OnRefreshClicked)
         copyPathButton.OnEvent("Click", BC_Overlay.OnCopyStatePathClicked)
         copySummaryButton.OnEvent("Click", BC_Overlay.OnCopySummaryClicked)
+        copyHistoryButton.OnEvent("Click", BC_Overlay.OnCopyHistoryClicked)
         closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
 
         BC_Overlay.Window := window
@@ -269,6 +274,7 @@ class BC_Overlay {
             RefreshButton: refreshButton,
             CopyPathButton: copyPathButton,
             CopySummaryButton: copySummaryButton,
+            CopyHistoryButton: copyHistoryButton,
             CloseButton: closeButton,
             CompareText: compareText,
             PlayerHealthLabel: playerHealthLabel,
@@ -384,6 +390,11 @@ class BC_Overlay {
             A_Clipboard := BC_State.BuildOperatorSummaryText(BC_Overlay.LastSnapshot)
             BC_Overlay.SetFooter("Summary text copied to clipboard.")
         }
+    }
+
+    static OnCopyHistoryClicked(*) {
+        A_Clipboard := BC_Overlay.RenderLiveUiHistory()
+        BC_Overlay.SetFooter("Recent history copied to clipboard.")
     }
 
     static OnCloseClicked(*) {
