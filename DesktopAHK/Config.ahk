@@ -20,7 +20,7 @@ BC_ConfigResolveDataRoot() {
 
 class BC_Config {
     static AppName := "BarCode"
-    static AppVersion := "0.3.10"
+    static AppVersion := "0.3.11"
     static ProtocolVersion := 1
     static LayoutId := 1
     static ProfileId := 1

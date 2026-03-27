@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.10
+version: 0.3.11
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -10,6 +10,12 @@ character count note: Character count not precomputed; measure with tooling if n
 */
 
 class BC_Tests {
+    static DeleteIfPresent(path) {
+        if (path != "" && FileExist(path)) {
+            FileDelete(path)
+        }
+    }
+
     static BuildUnavailableResult(reason, sourceKind := "unavailable", searchMode := "unavailable") {
         profile := BC_Protocol.GetProfile()
         details := {
@@ -262,6 +268,8 @@ class BC_Tests {
         processName := WinGetProcessName("ahk_id " hwnd)
 
         BC_State.ResetLiveOutputs()
+        BC_Tests.DeleteIfPresent(BC_Config.LiveRejectBmpPath)
+        BC_Tests.DeleteIfPresent(BC_Config.LiveCaptureBmpPath)
 
         while (sampleIndex <= sampleCount) {
             result := BC_Tests.DecodeLiveFrame(hwnd, 0, 0, sourcePreference)
@@ -447,6 +455,7 @@ class BC_Tests {
         firstRejectedResult := ""
 
         BC_State.ResetLiveOutputs()
+        BC_Tests.DeleteIfPresent(BC_Config.LiveWatchRejectBmpPath)
 
         while (durationSeconds <= 0 || (A_TickCount - startedAt) < (durationSeconds * 1000)) {
             result := BC_Tests.DecodeLiveFrame(hwnd, 0, 0, sourcePreference)

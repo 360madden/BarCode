@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.10
+version: 0.3.11
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -499,7 +499,27 @@ class BC_Overlay {
             : "Holding last accepted frame | " snapshot.reason
         base.confidence := snapshot.confidence
         base.searchMode := snapshot.searchMode
+        base.borderErrors := snapshot.borderErrors
+        base.originX := snapshot.originX
+        base.originY := snapshot.originY
+        base.pitch := snapshot.pitch
+        base.bandWidth := snapshot.bandWidth
+        base.bandHeight := snapshot.bandHeight
         base.captureSource := snapshot.captureSource
+        base.captureRequestedSource := snapshot.captureRequestedSource
+        base.captureResolvedSource := snapshot.captureResolvedSource
+        base.captureRouteReason := snapshot.captureRouteReason
+        base.captureFallbackFrom := snapshot.captureFallbackFrom
+        base.captureHintMode := snapshot.captureHintMode
+        base.captureHintPitch := snapshot.captureHintPitch
+        base.clientX := snapshot.clientX
+        base.clientY := snapshot.clientY
+        base.clientWidth := snapshot.clientWidth
+        base.clientHeight := snapshot.clientHeight
+        base.captureLeft := snapshot.captureLeft
+        base.captureTop := snapshot.captureTop
+        base.captureWidth := snapshot.captureWidth
+        base.captureHeight := snapshot.captureHeight
         base.captureAttempts := snapshot.captureAttempts
         base.captureMs := snapshot.captureMs
         base.pipelineMs := snapshot.pipelineMs
