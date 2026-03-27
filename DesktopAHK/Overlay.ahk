@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.6
+version: 0.3.7
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -191,7 +191,7 @@ class BC_Overlay {
         }
 
         BC_Overlay.SurfaceMode := "hud"
-        window := Gui("+AlwaysOnTop +ToolWindow +MinSize760x430", title)
+        window := Gui("+AlwaysOnTop +ToolWindow +MinSize760x470", title)
         window.BackColor := BC_Overlay.Palette.WindowBack
         window.MarginX := 12
         window.MarginY := 12
@@ -242,13 +242,15 @@ class BC_Overlay {
         targetExtras := window.AddEdit("xp yp+24 w312 r4 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionReader, "Consolas")
-        readerGroup := window.AddGroupBox("xm y+16 w720 h96", "Reader")
+        readerGroup := window.AddGroupBox("xm y+16 w720 h126", "Reader")
         window.SetFont("s10 c" BC_Overlay.Palette.Header, "Consolas")
         transportText := window.AddText("xp+14 yp+24 w340 h48", "")
         window.SetFont("s10 c" BC_Overlay.Palette.CaptureText, "Consolas")
         captureText := window.AddText("x+m yp w340 h48", "")
+        window.SetFont("s9 c" BC_Overlay.Palette.HistoryText, "Consolas")
+        sessionText := window.AddText("xp yp+52 w694 h32", "")
         window.SetFont("s9 c" BC_Overlay.Palette.Footer, "Consolas")
-        footer := window.AddText("xp yp+52 w694", "Close the window to exit this HUD preview.")
+        footer := window.AddText("xp yp+36 w694", "Close the window to exit this HUD preview.")
 
         window.OnEvent("Close", BC_Overlay.OnWindowClosed)
         window.OnEvent("Escape", BC_Overlay.OnWindowClosed)
@@ -283,6 +285,7 @@ class BC_Overlay {
             TargetExtras: targetExtras,
             TransportText: transportText,
             CaptureText: captureText,
+            SessionText: sessionText,
             Footer: footer
         }
 
@@ -700,7 +703,8 @@ class BC_Overlay {
 
         controls.TransportText.Text := BC_Overlay.FormatTransportText(snapshot)
         controls.CaptureText.Text := BC_Overlay.FormatCaptureText(snapshot)
-        controls.Footer.Text := BC_Overlay.FormatReaderFooter(snapshot) " | Summary: " BC_Config.LiveSummaryTextPath
+        controls.SessionText.Text := BC_Overlay.FormatSessionText(snapshot)
+        controls.Footer.Text := BC_Overlay.FormatReaderFooter(snapshot)
 
         window.Show()
         return window
