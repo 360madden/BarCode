@@ -53,8 +53,13 @@ class BC_Capture {
         captureHeight := BC_Capture.ResolveCaptureHeight(client.height - cropY, profile, geometryHint)
 
         if (sourcePreference = "auto") {
-            isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
-            if (isOccluded) {
+            if !BC_Capture.IsCaptureRectFullyVisible(captureLeft, captureTop, captureWidth, captureHeight) {
+                sourcePreference := "printwindow"
+            } else {
+                isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
+            }
+
+            if (sourcePreference = "printwindow" || isOccluded) {
                 if (BC_Capture.TryActivateWindow(hwnd)) {
                     Sleep 80
                     client := BC_Capture.GetClientRectOnScreen(hwnd)
@@ -63,10 +68,13 @@ class BC_Capture {
                     captureTop := client.y + cropY
                     captureWidth := client.width - cropX
                     captureHeight := BC_Capture.ResolveCaptureHeight(client.height - cropY, profile, geometryHint)
-                    isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
+                    if BC_Capture.IsCaptureRectFullyVisible(captureLeft, captureTop, captureWidth, captureHeight) {
+                        isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
+                        sourcePreference := isOccluded ? "printwindow" : "screen"
+                    } else {
+                        sourcePreference := "printwindow"
+                    }
                 }
-
-                sourcePreference := isOccluded ? "printwindow" : "screen"
             } else {
                 sourcePreference := "screen"
             }
@@ -86,6 +94,22 @@ class BC_Capture {
 
         image := BC_Capture.CaptureScreenRect(captureLeft, captureTop, captureWidth, captureHeight)
         return BC_Capture.AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, "screen-bitblt")
+    }
+
+    static IsCaptureRectFullyVisible(left, top, width, height) {
+        virtualLeft := DllCall("GetSystemMetrics", "Int", 76, "Int")
+        virtualTop := DllCall("GetSystemMetrics", "Int", 77, "Int")
+        virtualWidth := DllCall("GetSystemMetrics", "Int", 78, "Int")
+        virtualHeight := DllCall("GetSystemMetrics", "Int", 79, "Int")
+        virtualRight := virtualLeft + virtualWidth
+        virtualBottom := virtualTop + virtualHeight
+        rectRight := left + width
+        rectBottom := top + height
+
+        return left >= virtualLeft
+            && top >= virtualTop
+            && rectRight <= virtualRight
+            && rectBottom <= virtualBottom
     }
 
     static FilterGeometryHintForClient(client, geometryHint := "") {

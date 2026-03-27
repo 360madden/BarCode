@@ -199,18 +199,26 @@ class BC_Tests {
         totalPipelineMs := 0
         lockedPipelineMs := 0
         searchedPipelineMs := 0
+        fallbackSampleCount := 0
+        maxCaptureMs := 0
+        maxPipelineMs := 0
         lockedCount := 0
         searchedCount := 0
+        captureSources := Map()
+        rejectReasons := Map()
         firstSampleCaptureMs := ""
         firstSamplePipelineMs := ""
+        firstRejectedReason := ""
         sampleIndex := 1
+        sourcePreference := "auto"
         title := WinGetTitle("ahk_id " hwnd)
         processName := WinGetProcessName("ahk_id " hwnd)
 
         BC_State.ResetLiveOutputs()
 
         while (sampleIndex <= sampleCount) {
-            result := BC_Tests.DecodeLiveFrame(hwnd)
+            result := BC_Tests.DecodeLiveFrame(hwnd, 0, 0, sourcePreference)
+            sourcePreference := result.HasOwnProp("PreferredSource") ? result.PreferredSource : "auto"
             BC_Tests.ApplyLiveFrameState(result, sampleIndex, title, processName, true)
             validation := result.Validation
             totalCaptureMs += result.Timings.CaptureMs
@@ -219,6 +227,16 @@ class BC_Tests {
                 firstSampleCaptureMs := result.Timings.CaptureMs
                 firstSamplePipelineMs := result.Timings.PipelineMs
             }
+            if (result.Timings.CaptureMs > maxCaptureMs) {
+                maxCaptureMs := result.Timings.CaptureMs
+            }
+            if (result.Timings.PipelineMs > maxPipelineMs) {
+                maxPipelineMs := result.Timings.PipelineMs
+            }
+            if (result.Timings.AttemptCount > 1) {
+                fallbackSampleCount += 1
+            }
+            BC_Tests.IncrementCount(captureSources, result.Image.HasOwnProp("SourceKind") ? result.Image.SourceKind : "unknown")
             if (validation.IsAccepted) {
                 acceptedCount += 1
                 if (firstAcceptedSequence = "" && validation.Details.HasOwnProp("Transport")) {
@@ -226,6 +244,10 @@ class BC_Tests {
                 }
             } else {
                 rejectedCount += 1
+                if (firstRejectedReason = "") {
+                    firstRejectedReason := validation.Reason
+                }
+                BC_Tests.IncrementCount(rejectReasons, validation.Reason)
             }
 
             lastResult := result
@@ -267,13 +289,19 @@ class BC_Tests {
         reportLines.Push("SearchedSamples: " searchedCount)
         reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
+        reportLines.Push("FallbackSamples: " fallbackSampleCount)
+        reportLines.Push("CaptureSourceCounts: " BC_Tests.FormatCountMap(captureSources))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / sampleCount, 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / sampleCount, 2))
         reportLines.Push("FirstSampleCaptureMs: " firstSampleCaptureMs)
         reportLines.Push("FirstSamplePipelineMs: " firstSamplePipelineMs)
         reportLines.Push("AverageLockedPipelineMs: " (lockedCount ? Round(lockedPipelineMs / lockedCount, 2) : 0))
         reportLines.Push("AverageSearchedPipelineMs: " (searchedCount ? Round(searchedPipelineMs / searchedCount, 2) : 0))
+        reportLines.Push("MaxCaptureMs: " maxCaptureMs)
+        reportLines.Push("MaxPipelineMs: " maxPipelineMs)
         reportLines.Push("FirstAcceptedSequence: " firstAcceptedSequence)
+        reportLines.Push("FirstRejectedReason: " firstRejectedReason)
+        reportLines.Push("RejectReasonCounts: " BC_Tests.FormatCountMap(rejectReasons))
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
         reportLines.Push("LastConfidence: " validation.Confidence)
@@ -322,6 +350,7 @@ class BC_Tests {
         processName := WinGetProcessName("ahk_id " hwnd)
         startedAt := A_TickCount
         sampleIndex := 1
+        sourcePreference := "auto"
         acceptedCount := 0
         rejectedCount := 0
         lastResult := ""
@@ -329,21 +358,42 @@ class BC_Tests {
         totalPipelineMs := 0
         lockedPipelineMs := 0
         searchedPipelineMs := 0
+        fallbackSampleCount := 0
+        maxCaptureMs := 0
+        maxPipelineMs := 0
         lockedCount := 0
         searchedCount := 0
+        captureSources := Map()
+        rejectReasons := Map()
+        firstRejectedReason := ""
 
         BC_State.ResetLiveOutputs()
 
         while (durationSeconds <= 0 || (A_TickCount - startedAt) < (durationSeconds * 1000)) {
-            result := BC_Tests.DecodeLiveFrame(hwnd)
+            result := BC_Tests.DecodeLiveFrame(hwnd, 0, 0, sourcePreference)
+            sourcePreference := result.HasOwnProp("PreferredSource") ? result.PreferredSource : "auto"
             BC_Tests.ApplyLiveFrameState(result, sampleIndex, title, processName, true)
             validation := result.Validation
             totalCaptureMs += result.Timings.CaptureMs
             totalPipelineMs += result.Timings.PipelineMs
+            if (result.Timings.CaptureMs > maxCaptureMs) {
+                maxCaptureMs := result.Timings.CaptureMs
+            }
+            if (result.Timings.PipelineMs > maxPipelineMs) {
+                maxPipelineMs := result.Timings.PipelineMs
+            }
+            if (result.Timings.AttemptCount > 1) {
+                fallbackSampleCount += 1
+            }
+            BC_Tests.IncrementCount(captureSources, result.Image.HasOwnProp("SourceKind") ? result.Image.SourceKind : "unknown")
             if (validation.IsAccepted) {
                 acceptedCount += 1
             } else {
                 rejectedCount += 1
+                if (firstRejectedReason = "") {
+                    firstRejectedReason := validation.Reason
+                }
+                BC_Tests.IncrementCount(rejectReasons, validation.Reason)
             }
 
             if (result.Detection.SearchMode = "locked") {
@@ -383,10 +433,16 @@ class BC_Tests {
         reportLines.Push("SearchedSamples: " searchedCount)
         reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
+        reportLines.Push("FallbackSamples: " fallbackSampleCount)
+        reportLines.Push("CaptureSourceCounts: " BC_Tests.FormatCountMap(captureSources))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / Max(1, sampleCount), 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / Max(1, sampleCount), 2))
         reportLines.Push("AverageLockedPipelineMs: " (lockedCount ? Round(lockedPipelineMs / lockedCount, 2) : 0))
         reportLines.Push("AverageSearchedPipelineMs: " (searchedCount ? Round(searchedPipelineMs / searchedCount, 2) : 0))
+        reportLines.Push("MaxCaptureMs: " maxCaptureMs)
+        reportLines.Push("MaxPipelineMs: " maxPipelineMs)
+        reportLines.Push("FirstRejectedReason: " firstRejectedReason)
+        reportLines.Push("RejectReasonCounts: " BC_Tests.FormatCountMap(rejectReasons))
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
         reportLines.Push("LastConfidence: " validation.Confidence)
@@ -413,20 +469,31 @@ class BC_Tests {
         return BC_Tests.DecodeImage(image)
     }
 
-    static DecodeLiveFrame(hwnd, cropX := 0, cropY := 0) {
+    static DecodeLiveFrame(hwnd, cropX := 0, cropY := 0, sourcePreference := "auto") {
         totalCaptureMs := 0
         totalPipelineMs := 0
         attemptSources := []
         geometryHint := BC_State.GetLockedGeometryForClient(BC_Capture.GetClientRectOnScreen(hwnd))
 
         captureStarted := A_TickCount
-        primaryImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, "auto", geometryHint)
+        primaryImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, sourcePreference, geometryHint)
         totalCaptureMs += A_TickCount - captureStarted
         attemptSources.Push(primaryImage.SourceKind)
 
         pipelineStarted := A_TickCount
         bestResult := BC_Tests.TryDecodeImage(primaryImage, geometryHint)
         totalPipelineMs += A_TickCount - pipelineStarted
+
+        if (!bestResult.Validation.IsAccepted && IsObject(geometryHint) && bestResult.Detection.SearchMode = "locked") {
+            BC_Debug.Trace("tests.live:relock-search=primary`r`n")
+            pipelineStarted := A_TickCount
+            relockResult := BC_Tests.TryDecodeImage(primaryImage, "", false)
+            totalPipelineMs += A_TickCount - pipelineStarted
+
+            if (BC_Tests.IsPreferredLiveResult(relockResult, bestResult)) {
+                bestResult := relockResult
+            }
+        }
 
         if !bestResult.Validation.IsAccepted {
             fallbackSource := primaryImage.SourceKind = "printwindow-client" ? "screen" : "printwindow"
@@ -440,6 +507,17 @@ class BC_Tests {
             fallbackResult := BC_Tests.TryDecodeImage(fallbackImage, geometryHint)
             totalPipelineMs += A_TickCount - pipelineStarted
 
+            if (!fallbackResult.Validation.IsAccepted && IsObject(geometryHint) && fallbackResult.Detection.SearchMode = "locked") {
+                BC_Debug.Trace("tests.live:relock-search=fallback`r`n")
+                pipelineStarted := A_TickCount
+                fallbackSearchResult := BC_Tests.TryDecodeImage(fallbackImage, "", false)
+                totalPipelineMs += A_TickCount - pipelineStarted
+
+                if (BC_Tests.IsPreferredLiveResult(fallbackSearchResult, fallbackResult)) {
+                    fallbackResult := fallbackSearchResult
+                }
+            }
+
             if (BC_Tests.IsPreferredLiveResult(fallbackResult, bestResult)) {
                 bestResult := fallbackResult
             }
@@ -451,12 +529,14 @@ class BC_Tests {
             AttemptCount: attemptSources.Length
         }
         bestResult.CaptureAttempts := attemptSources
+        bestResult.PreferredSource := BC_Tests.PreferredSourceFromResult(bestResult)
         return bestResult
     }
 
-    static DecodeImage(image, geometryHint := "") {
+    static DecodeImage(image, geometryHint := "", allowStoredHint := true) {
         profile := BC_Protocol.GetProfile()
-        detection := BC_Detect.LocateBand(image, profile, IsObject(geometryHint) ? geometryHint : BC_State.GetLockedGeometryForImage(image))
+        resolvedHint := IsObject(geometryHint) ? geometryHint : (allowStoredHint ? BC_State.GetLockedGeometryForImage(image) : "")
+        detection := BC_Detect.LocateBand(image, profile, resolvedHint)
         decodeResult := BC_Decode.Decode(image, detection)
         validation := BC_Validate.Validate(detection, decodeResult)
         BC_State.Update(validation, { Image: image })
@@ -469,11 +549,11 @@ class BC_Tests {
         }
     }
 
-    static TryDecodeImage(image, geometryHint := "") {
+    static TryDecodeImage(image, geometryHint := "", allowStoredHint := true) {
         profile := BC_Protocol.GetProfile()
 
         try {
-            return BC_Tests.DecodeImage(image, geometryHint)
+            return BC_Tests.DecodeImage(image, geometryHint, allowStoredHint)
         } catch as err {
             details := {
                 BorderErrors: 999,
@@ -509,6 +589,40 @@ class BC_Tests {
         result.WindowTitle := title
         result.ProcessName := processName
         BC_State.Update(result.Validation, result, persistSnapshot)
+    }
+
+    static IncrementCount(counterMap, key) {
+        normalizedKey := key = "" ? "<empty>" : ("" key)
+        currentValue := counterMap.Has(normalizedKey) ? counterMap[normalizedKey] : 0
+        counterMap[normalizedKey] := currentValue + 1
+    }
+
+    static PreferredSourceFromResult(result) {
+        if !IsObject(result) || !result.HasOwnProp("Image") {
+            return "auto"
+        }
+
+        if (result.Image.HasOwnProp("SourceKind") && result.Image.SourceKind = "printwindow-client") {
+            return "printwindow"
+        }
+
+        if (result.Image.HasOwnProp("SourceKind") && result.Image.SourceKind = "screen-bitblt") {
+            return "screen"
+        }
+
+        return "auto"
+    }
+
+    static FormatCountMap(counterMap) {
+        if !IsObject(counterMap) || counterMap.Count = 0 {
+            return "-"
+        }
+
+        parts := []
+        for key, value in counterMap {
+            parts.Push(key "=" value)
+        }
+        return BC_Debug.Join(parts, ", ")
     }
 
     static RenderMatrixToPixels(profile, matrix) {

@@ -358,9 +358,10 @@ class BC_Overlay {
 
     static FormatCaptureText(snapshot) {
         lines := []
+        capturePath := (snapshot.attemptCount != "" && Integer(snapshot.attemptCount) > 1) ? "fallback" : "direct"
         lines.Push("Window: " BC_Overlay.SafeText(snapshot.windowTitle, "-"))
         lines.Push("Process: " BC_Overlay.SafeText(snapshot.processName, "-"))
-        lines.Push("Capture: " BC_Overlay.SafeText(snapshot.captureSource, "-"))
+        lines.Push("Capture: " BC_Overlay.SafeText(snapshot.captureSource, "-") " (" capturePath ")")
         lines.Push("Attempts: " BC_Overlay.SafeText(snapshot.captureAttempts, "-"))
         lines.Push("Capture / Pipeline ms: " BC_Overlay.SafeText(snapshot.captureMs, "-") " / " BC_Overlay.SafeText(snapshot.pipelineMs, "-"))
         lines.Push("Origin / Border: " BC_Overlay.SafeText(snapshot.originX, "-") "," BC_Overlay.SafeText(snapshot.originY, "-") " / " BC_Overlay.SafeText(snapshot.borderErrors, "-"))
@@ -396,7 +397,24 @@ class BC_Overlay {
         return BC_Debug.Join(lines, "`r`n")
     }
 
+    static HasTarget(snapshot) {
+        if (snapshot.targetHealthMax != "" && Integer(snapshot.targetHealthMax) > 0) {
+            return true
+        }
+        if (snapshot.targetLevel != "" && Integer(snapshot.targetLevel) > 0) {
+            return true
+        }
+        if (snapshot.targetFlags != "" && Integer(snapshot.targetFlags) > 0) {
+            return true
+        }
+        return false
+    }
+
     static FormatTargetMeta(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return "No target selected"
+        }
+
         return (
             "Level " BC_Overlay.SafeText(snapshot.targetLevel, "-")
             " | Flags " BC_Overlay.SafeText(snapshot.targetFlags, "0")
@@ -405,6 +423,10 @@ class BC_Overlay {
     }
 
     static FormatTargetExtras(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return "Target telemetry unavailable."
+        }
+
         lines := []
         lines.Push("Health: " BC_Overlay.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax))
         lines.Push("Resource: " BC_Overlay.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax))
@@ -441,10 +463,13 @@ class BC_Overlay {
         controls.PlayerMeta.Text := BC_Overlay.FormatPlayerMeta(snapshot)
         controls.PlayerOffense.Value := BC_Overlay.FormatPlayerOffense(snapshot)
 
-        controls.TargetHealthLabel.Text := "Health: " BC_Overlay.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
-        controls.TargetHealthBar.Value := BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
-        controls.TargetResourceLabel.Text := "Resource: " BC_Overlay.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_Overlay.SafeText(snapshot.targetResourceKindName, "none") ")"
-        controls.TargetResourceBar.Value := BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+        hasTarget := BC_Overlay.HasTarget(snapshot)
+        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_Overlay.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)) : "Health: -"
+        controls.TargetHealthBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0
+        controls.TargetResourceLabel.Text := hasTarget
+            ? ("Resource: " BC_Overlay.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_Overlay.SafeText(snapshot.targetResourceKindName, "none") ")")
+            : "Resource: -"
+        controls.TargetResourceBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0
         controls.TargetMeta.Text := BC_Overlay.FormatTargetMeta(snapshot)
         controls.TargetExtras.Value := BC_Overlay.FormatTargetExtras(snapshot)
 
@@ -498,12 +523,17 @@ class BC_Overlay {
         if IsObject(liveState) {
             hwnd := liveState.HasOwnProp("Hwnd") ? liveState.Hwnd : 0
             if (hwnd && WinExist("ahk_id " hwnd) && BC_Capture.IsWindowUsable(hwnd)) {
-                return BC_Tests.DecodeLiveFrame(hwnd)
+                result := BC_Tests.DecodeLiveFrame(hwnd, 0, 0, liveState.HasOwnProp("SourcePreference") ? liveState.SourcePreference : "auto")
+                liveState.SourcePreference := result.HasOwnProp("PreferredSource") ? result.PreferredSource : "auto"
+                return result
             }
 
             liveState.Hwnd := BC_Capture.FindRiftWindow()
             if liveState.Hwnd {
-                return BC_Tests.DecodeLiveFrame(liveState.Hwnd)
+                liveState.SourcePreference := "auto"
+                result := BC_Tests.DecodeLiveFrame(liveState.Hwnd, 0, 0, liveState.SourcePreference)
+                liveState.SourcePreference := result.HasOwnProp("PreferredSource") ? result.PreferredSource : "auto"
+                return result
             }
         }
 
@@ -515,7 +545,7 @@ class BC_Overlay {
     }
 
     static BuildLiveProvider() {
-        liveState := { Hwnd: BC_Capture.FindRiftWindow() }
+        liveState := { Hwnd: BC_Capture.FindRiftWindow(), SourcePreference: "auto" }
         if !liveState.Hwnd {
             BC_Tests.BuildUnavailableResult(
                 "No likely RIFT window was found for liveui live source.",
