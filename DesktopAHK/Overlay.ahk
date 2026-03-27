@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.14
+version: 0.3.15
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -872,6 +872,24 @@ class BC_Overlay {
         }
     }
 
+    static PrimeStaticSnapshot(result) {
+        if !IsObject(result) || !result.HasOwnProp("Validation") {
+            throw Error("Static HUD/dashboard preview requires a decoded result.")
+        }
+
+        image := result.HasOwnProp("Image") ? result.Image : {}
+        BC_State.Update(result.Validation, {
+            Image: image,
+            Timings: {
+                CaptureMs: 0,
+                PipelineMs: 0,
+                AttemptCount: 1
+            },
+            CaptureAttempts: [IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : "preview"],
+            SampleIndex: 1
+        }, true)
+    }
+
     static WaitUntilClosed() {
         while IsObject(BC_Overlay.Window) {
             Sleep 50
@@ -1061,22 +1079,22 @@ class BC_Overlay {
     }
 
     static RunSyntheticDashboard(autoCloseMs := 0) {
-        BC_Tests.DecodeSyntheticHot()
+        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeSyntheticHot())
         return BC_Overlay.ShowCurrentState("BarCode Reader Dashboard | Synthetic", autoCloseMs)
     }
 
     static RunBmpDashboard(path, cropX := 0, cropY := 0, autoCloseMs := 0) {
-        BC_Tests.DecodeBmp(path, cropX, cropY)
+        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeBmp(path, cropX, cropY))
         return BC_Overlay.ShowCurrentState("BarCode Reader Dashboard | BMP", autoCloseMs)
     }
 
     static RunSyntheticHud(autoCloseMs := 0) {
-        BC_Tests.DecodeSyntheticHot()
+        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeSyntheticHot())
         return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | Synthetic", autoCloseMs)
     }
 
     static RunBmpHud(path, cropX := 0, cropY := 0, autoCloseMs := 0) {
-        BC_Tests.DecodeBmp(path, cropX, cropY)
+        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeBmp(path, cropX, cropY))
         return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | BMP", autoCloseMs)
     }
 
