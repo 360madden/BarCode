@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.13
+version: 0.3.14
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -28,6 +28,7 @@ $latestStateJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\la
 $latestHistoryJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.json'
 $latestHistoryJsonlPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.jsonl'
 $archiveRoot = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\archive'
+$archiveKeepCount = 50
 
 function Format-ProcessArgument {
     param([string]$Value)
@@ -166,7 +167,7 @@ function New-RunArchive {
         return $null
     }
 
-    $stamp = $StartedAt.ToString('yyyyMMdd-HHmmss')
+    $stamp = $StartedAt.ToString('yyyyMMdd-HHmmss-fff')
     $archiveDir = Join-Path $archiveRoot ($stamp + '-' + $ModeName)
     New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
 
@@ -180,6 +181,30 @@ function New-RunArchive {
     Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonlPath -DestinationDirectory $archiveDir
 
     return $archiveDir
+}
+
+function Trim-RunArchives {
+    param(
+        [string]$ArchiveDirectoryRoot,
+        [int]$KeepCount
+    )
+
+    if ($KeepCount -le 0) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $ArchiveDirectoryRoot)) {
+        return
+    }
+
+    $directories = @(Get-ChildItem -LiteralPath $ArchiveDirectoryRoot -Directory | Sort-Object LastWriteTime -Descending)
+    if ($directories.Count -le $KeepCount) {
+        return
+    }
+
+    foreach ($dir in $directories[$KeepCount..($directories.Count - 1)]) {
+        Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+    }
 }
 
 $runStartTime = Get-Date
@@ -238,6 +263,7 @@ if (($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
 
 $archiveDir = New-RunArchive -StartedAt $runStartTime -ModeName $Mode -ReportPath $reportPath
 if ($archiveDir) {
+    Trim-RunArchives -ArchiveDirectoryRoot $archiveRoot -KeepCount $archiveKeepCount
     Write-Output ('ArchiveDir=' + $archiveDir)
 }
 
