@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.4
+version: 0.3.5
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -391,9 +391,12 @@ class BC_State {
             " | " BC_State.DefaultText(snapshot.playerCallingName, "unknown")
             " | " BC_State.DefaultText(snapshot.playerRoleName, "unknown")
             " | HP " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+            " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
             " | " BC_State.DefaultText(snapshot.playerResourceKindName, "none")
             " " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+            " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ")"
         )
+        lines.Push("Player state: " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot)))
         lines.Push(
             "Player offense: atk " BC_State.DefaultText(snapshot.playerPowerAttack, "0")
             " | critAtk " BC_State.DefaultText(snapshot.playerCritAttack, "0")
@@ -407,10 +410,14 @@ class BC_State {
             lines.Push(
                 "Target: L" BC_State.DefaultText(snapshot.targetLevel, "-")
                 " | HP " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
+                " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")"
                 " | " BC_State.DefaultText(snapshot.targetResourceKindName, "none")
                 " " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+                " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ")"
                 " | flags " BC_State.HexText(snapshot.targetFlags, 2)
             )
+            lines.Push("Target state: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
+            lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
         } else {
             lines.Push("Target: none")
         }
@@ -441,14 +448,19 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("confidence", snapshot.confidence))
         fields.Push(BC_State.JsonNumberField("sequence", snapshot.sequence))
         fields.Push(BC_State.JsonBoolField("targetPresent", BC_State.HasTarget(snapshot)))
+        fields.Push(BC_State.JsonStringField("playerStateText", BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))))
+        fields.Push(BC_State.JsonStringField("targetStateText", BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot))))
+        fields.Push(BC_State.JsonStringField("comparisonText", BC_State.BuildComparisonText(snapshot)))
         fields.Push(BC_State.JsonStringField("playerCallingName", snapshot.playerCallingName))
         fields.Push(BC_State.JsonStringField("playerRoleName", snapshot.playerRoleName))
         fields.Push(BC_State.JsonNumberField("playerLevel", snapshot.playerLevel))
         fields.Push(BC_State.JsonStringField("playerResourceKindName", snapshot.playerResourceKindName))
         fields.Push(BC_State.JsonNumberField("playerHealthCurrent", snapshot.playerHealthCurrent))
         fields.Push(BC_State.JsonNumberField("playerHealthMax", snapshot.playerHealthMax))
+        fields.Push(BC_State.JsonNumberField("playerHealthPercent", BC_State.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)))
         fields.Push(BC_State.JsonNumberField("playerResourceCurrent", snapshot.playerResourceCurrent))
         fields.Push(BC_State.JsonNumberField("playerResourceMax", snapshot.playerResourceMax))
+        fields.Push(BC_State.JsonNumberField("playerResourcePercent", BC_State.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax)))
         fields.Push(BC_State.JsonNumberField("playerPowerAttack", snapshot.playerPowerAttack))
         fields.Push(BC_State.JsonNumberField("playerCritAttack", snapshot.playerCritAttack))
         fields.Push(BC_State.JsonNumberField("playerPowerSpell", snapshot.playerPowerSpell))
@@ -459,8 +471,10 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("targetResourceKindName", snapshot.targetResourceKindName))
         fields.Push(BC_State.JsonNumberField("targetHealthCurrent", snapshot.targetHealthCurrent))
         fields.Push(BC_State.JsonNumberField("targetHealthMax", snapshot.targetHealthMax))
+        fields.Push(BC_State.JsonNumberField("targetHealthPercent", BC_State.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax)))
         fields.Push(BC_State.JsonNumberField("targetResourceCurrent", snapshot.targetResourceCurrent))
         fields.Push(BC_State.JsonNumberField("targetResourceMax", snapshot.targetResourceMax))
+        fields.Push(BC_State.JsonNumberField("targetResourcePercent", BC_State.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax)))
         fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
         fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
@@ -520,6 +534,82 @@ class BC_State {
             return "unknown"
         }
         return snapshot.freshFrame ? "fresh" : "repeat"
+    }
+
+    static BuildPlayerStateTags(snapshot) {
+        tags := []
+        stateFlags := Integer(snapshot.stateFlags || 0)
+        castFlags := Integer(snapshot.playerCastFlags || 0)
+
+        if BC_State.HasBit(stateFlags, 0x0001) {
+            tags.Push("ready")
+        }
+        if BC_State.HasBit(stateFlags, 0x0002) {
+            tags.Push("alive")
+        }
+        if BC_State.HasBit(stateFlags, 0x0004) {
+            tags.Push("combat")
+        }
+        if BC_State.HasBit(stateFlags, 0x0008) {
+            tags.Push("casting")
+        }
+        if BC_State.HasBit(stateFlags, 0x0010) {
+            tags.Push("resource")
+        }
+        if BC_State.HasBit(castFlags, 0x02) {
+            tags.Push("channel")
+        }
+        if BC_State.HasBit(castFlags, 0x04) {
+            tags.Push("locked")
+        }
+
+        return tags
+    }
+
+    static BuildTargetStateTags(snapshot) {
+        tags := []
+        stateFlags := Integer(snapshot.stateFlags || 0)
+        targetFlags := Integer(snapshot.targetFlags || 0)
+
+        if BC_State.HasBit(stateFlags, 0x0020) {
+            tags.Push("present")
+        }
+        if BC_State.HasBit(stateFlags, 0x0040) {
+            tags.Push("alive")
+        }
+        if BC_State.HasBit(stateFlags, 0x0080) {
+            tags.Push("combat")
+        }
+        if BC_State.HasBit(stateFlags, 0x0100) {
+            tags.Push("resource")
+        }
+        if BC_State.HasBit(targetFlags, 0x01) {
+            tags.Push("player")
+        }
+        if BC_State.HasBit(targetFlags, 0x02) {
+            tags.Push("pet")
+        }
+
+        return tags
+    }
+
+    static BuildComparisonText(snapshot) {
+        if !BC_State.HasTarget(snapshot) {
+            return "player-only"
+        }
+
+        return (
+            "HP "
+            BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+            " vs "
+            BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)
+            " | "
+            BC_State.DefaultText(snapshot.playerResourceKindName, "resource")
+            " "
+            BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+            " vs "
+            BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
+        )
     }
 
     static GetRecentHistory(limit := 8) {
@@ -860,6 +950,10 @@ class BC_State {
         return text = "" ? fallback : text
     }
 
+    static JoinTags(tags, fallback := "-") {
+        return IsObject(tags) && tags.Length > 0 ? BC_Debug.Join(tags, " ") : fallback
+    }
+
     static PairText(left, right) {
         return BC_State.NumberText(left) "/" BC_State.NumberText(right)
     }
@@ -873,6 +967,28 @@ class BC_State {
         return leftText "/" rightText
     }
 
+    static Percent(current, maximum) {
+        numericCurrent := Integer(current || 0)
+        numericMaximum := Integer(maximum || 0)
+        if (numericMaximum <= 0) {
+            return ""
+        }
+
+        pct := Floor((numericCurrent * 100.0) / numericMaximum)
+        if (pct < 0) {
+            return 0
+        }
+        if (pct > 100) {
+            return 100
+        }
+        return pct
+    }
+
+    static PercentText(current, maximum, fallback := "-") {
+        pct := BC_State.Percent(current, maximum)
+        return pct = "" ? fallback : (pct "%")
+    }
+
     static HexText(value, minDigits := 0) {
         if (value = "") {
             return ""
@@ -883,6 +999,10 @@ class BC_State {
             return "0x" Format("{:0" minDigits "X}", integerValue)
         }
         return "0x" Format("{:X}", integerValue)
+    }
+
+    static HasBit(value, mask) {
+        return (Integer(value || 0) & mask) != 0
     }
 
     static NumberText(value) {

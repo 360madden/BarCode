@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.4
+version: 0.3.5
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -369,7 +369,7 @@ class BC_Overlay {
     }
 
     static FormatSessionText(snapshot) {
-        return (
+        line := (
             "Session " BC_Overlay.SafeText(snapshot.sessionSampleCount, "0")
             " samples | accepted " BC_Overlay.SafeText(snapshot.sessionAcceptedCount, "0")
             " | rejected " BC_Overlay.SafeText(snapshot.sessionRejectedCount, "0")
@@ -378,6 +378,10 @@ class BC_Overlay {
             " | repeats " BC_Overlay.SafeText(snapshot.sequenceRepeatedCount, "0")
             " | wraps " BC_Overlay.SafeText(snapshot.sequenceWrapCount, "0")
         )
+        if BC_State.HasTarget(snapshot) {
+            line .= "`r`nCompare " BC_State.BuildComparisonText(snapshot)
+        }
+        return line
     }
 
     static FormatPlayerMeta(snapshot) {
@@ -385,29 +389,31 @@ class BC_Overlay {
             "Level " BC_Overlay.SafeText(snapshot.playerLevel, "-")
             " | " BC_Overlay.SafeText(snapshot.playerCallingName, "unknown")
             " | " BC_Overlay.SafeText(snapshot.playerRoleName, "unknown")
+            " | " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))
         )
     }
 
     static FormatPlayerOffense(snapshot) {
         lines := []
+        lines.Push(
+            "HP: "
+            BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+            " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
+            "   "
+            BC_Overlay.SafeText(snapshot.playerResourceKindName, "resource")
+            ": "
+            BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
+            " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ")"
+        )
         lines.Push("Attack Power: " BC_Overlay.SafeText(snapshot.playerPowerAttack, "0") "   Crit Attack: " BC_Overlay.SafeText(snapshot.playerCritAttack, "0"))
         lines.Push("Spell Power: " BC_Overlay.SafeText(snapshot.playerPowerSpell, "0") "   Crit Spell: " BC_Overlay.SafeText(snapshot.playerCritSpell, "0"))
         lines.Push("Crit Power: " BC_Overlay.SafeText(snapshot.playerCritPower, "0") "   Hit: " BC_Overlay.SafeText(snapshot.playerHit, "0"))
-        lines.Push("Damage Estimate: " BC_Overlay.SafeText(snapshot.playerDamageEstimate, "0"))
+        lines.Push("Flags: " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot)) "   Damage Estimate: " BC_Overlay.SafeText(snapshot.playerDamageEstimate, "0"))
         return BC_Debug.Join(lines, "`r`n")
     }
 
     static HasTarget(snapshot) {
-        if (snapshot.targetHealthMax != "" && Integer(snapshot.targetHealthMax) > 0) {
-            return true
-        }
-        if (snapshot.targetLevel != "" && Integer(snapshot.targetLevel) > 0) {
-            return true
-        }
-        if (snapshot.targetFlags != "" && Integer(snapshot.targetFlags) > 0) {
-            return true
-        }
-        return false
+        return BC_State.HasTarget(snapshot)
     }
 
     static FormatTargetMeta(snapshot) {
@@ -417,8 +423,9 @@ class BC_Overlay {
 
         return (
             "Level " BC_Overlay.SafeText(snapshot.targetLevel, "-")
-            " | Flags " BC_Overlay.SafeText(snapshot.targetFlags, "0")
+            " | Flags " BC_State.HexText(snapshot.targetFlags, 2)
             " | Resource " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none")
+            " | " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot))
         )
     }
 
@@ -428,9 +435,10 @@ class BC_Overlay {
         }
 
         lines := []
-        lines.Push("Health: " BC_Overlay.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax))
-        lines.Push("Resource: " BC_Overlay.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax))
-        lines.Push("Damage Estimate: " BC_Overlay.SafeText(snapshot.targetDamageEstimate, "0"))
+        lines.Push("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")")
+        lines.Push("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ")")
+        lines.Push("State: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
+        lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
         return BC_Debug.Join(lines, "`r`n")
     }
 
@@ -456,18 +464,18 @@ class BC_Overlay {
         } catch {
         }
         controls.Status.Text := "Status: " acceptedText freshnessText searchText reasonText sequenceText confidenceText
-        controls.PlayerHealthLabel.Text := "Health: " BC_Overlay.PairText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
+        controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
         controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
-        controls.PlayerResourceLabel.Text := "Resource: " BC_Overlay.PairText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_Overlay.SafeText(snapshot.playerResourceKindName, "none") ")"
+        controls.PlayerResourceLabel.Text := "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none")
         controls.PlayerResourceBar.Value := BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
         controls.PlayerMeta.Text := BC_Overlay.FormatPlayerMeta(snapshot)
         controls.PlayerOffense.Value := BC_Overlay.FormatPlayerOffense(snapshot)
 
         hasTarget := BC_Overlay.HasTarget(snapshot)
-        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_Overlay.PairText(snapshot.targetHealthCurrent, snapshot.targetHealthMax)) : "Health: -"
+        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -"
         controls.TargetHealthBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0
         controls.TargetResourceLabel.Text := hasTarget
-            ? ("Resource: " BC_Overlay.PairText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_Overlay.SafeText(snapshot.targetResourceKindName, "none") ")")
+            ? ("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ") " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none"))
             : "Resource: -"
         controls.TargetResourceBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0
         controls.TargetMeta.Text := BC_Overlay.FormatTargetMeta(snapshot)
