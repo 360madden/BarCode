@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.7
+version: 0.3.8
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -43,6 +43,7 @@ class BC_Overlay {
     static LiveUiTickCount := 0
     static LiveUiStartTick := 0
     static LiveUiLastSnapshot := ""
+    static LiveUiLastAcceptedSnapshot := ""
     static LiveUiHistory := []
     static LiveUiHistoryLimit := 8
 
@@ -388,7 +389,7 @@ class BC_Overlay {
     }
 
     static HistoryLine(snapshot) {
-        verdict := snapshot.accepted ? "ACCEPT" : "REJECT"
+        verdict := BC_Overlay.IsHeldFrame(snapshot) ? "HELD" : (snapshot.accepted ? "ACCEPT" : "REJECT")
         seq := BC_Overlay.SafeText(snapshot.sequence, "-")
         confidence := BC_Overlay.SafeText(snapshot.confidence, "-")
         reason := BC_Overlay.SafeText(snapshot.reason, "-")
@@ -467,7 +468,82 @@ class BC_Overlay {
         return BC_Overlay.SafeText(current, "0") "/" BC_Overlay.SafeText(maximum, "0")
     }
 
+    static CloneSnapshot(snapshot) {
+        copy := {}
+        for key, value in snapshot.OwnProps() {
+            copy.%key% := value
+        }
+        return copy
+    }
+
+    static IsHeldFrame(snapshot) {
+        return snapshot.HasOwnProp("heldFrame") && snapshot.heldFrame
+    }
+
+    static BuildHeldDisplaySnapshot(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.CloneSnapshot(snapshot)
+        }
+
+        if !IsObject(BC_Overlay.LiveUiLastAcceptedSnapshot) {
+            return snapshot
+        }
+
+        base := BC_Overlay.CloneSnapshot(BC_Overlay.LiveUiLastAcceptedSnapshot)
+        base.accepted := false
+        base.heldFrame := true
+        base.freshFrame := false
+        base.sequenceChanged := false
+        base.reason := snapshot.reason = ""
+            ? "Holding last accepted frame"
+            : "Holding last accepted frame | " snapshot.reason
+        base.confidence := snapshot.confidence
+        base.searchMode := snapshot.searchMode
+        base.captureSource := snapshot.captureSource
+        base.captureAttempts := snapshot.captureAttempts
+        base.captureMs := snapshot.captureMs
+        base.pipelineMs := snapshot.pipelineMs
+        base.attemptCount := snapshot.attemptCount
+        base.sampleIndex := snapshot.sampleIndex
+        base.sessionStartedUtc := snapshot.sessionStartedUtc
+        base.sessionSampleCount := snapshot.sessionSampleCount
+        base.sessionAcceptedCount := snapshot.sessionAcceptedCount
+        base.sessionRejectedCount := snapshot.sessionRejectedCount
+        base.acceptedStreak := snapshot.acceptedStreak
+        base.rejectedStreak := snapshot.rejectedStreak
+        base.lastAcceptedTimestampUtc := snapshot.lastAcceptedTimestampUtc
+        base.lastRejectedTimestampUtc := snapshot.lastRejectedTimestampUtc
+        base.lastAcceptedSequence := snapshot.lastAcceptedSequence
+        base.sequenceAdvance := snapshot.sequenceAdvance
+        base.sequenceRepeatedCount := snapshot.sequenceRepeatedCount
+        base.sequenceWrapCount := snapshot.sequenceWrapCount
+        base.windowTitle := snapshot.windowTitle
+        base.processName := snapshot.processName
+        base.timestampUtc := snapshot.timestampUtc
+        return base
+    }
+
+    static StatusVerdict(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return "HELD"
+        }
+        return snapshot.accepted ? "ACCEPTED" : "REJECTED"
+    }
+
+    static StatusColor(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.Palette.StatusWarn
+        }
+        return snapshot.accepted
+            ? (snapshot.freshFrame ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusWarn)
+            : BC_Overlay.Palette.StatusBad
+    }
+
     static FreshnessLabel(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return "held"
+        }
+
         if !snapshot.accepted {
             return "bad"
         }
@@ -611,12 +687,10 @@ class BC_Overlay {
     static UpdateFromSnapshot(snapshot, title := "BarCode Reader Dashboard") {
         window := BC_Overlay.EnsureWindow(title)
         controls := BC_Overlay.Controls
-        acceptedText := snapshot.accepted ? "ACCEPTED" : "REJECTED"
-        freshnessText := snapshot.accepted ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
+        acceptedText := BC_Overlay.StatusVerdict(snapshot)
+        freshnessText := (snapshot.accepted || BC_Overlay.IsHeldFrame(snapshot)) ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
         searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
-        statusColor := snapshot.accepted
-            ? (snapshot.freshFrame ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusWarn)
-            : BC_Overlay.Palette.StatusBad
+        statusColor := BC_Overlay.StatusColor(snapshot)
         sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
         confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
         reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
@@ -661,12 +735,10 @@ class BC_Overlay {
     static UpdateHudFromSnapshot(snapshot, title := "BarCode Reader HUD") {
         window := BC_Overlay.EnsureHudWindow(title)
         controls := BC_Overlay.Controls
-        acceptedText := snapshot.accepted ? "ACCEPTED" : "REJECTED"
-        freshnessText := snapshot.accepted ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
+        acceptedText := BC_Overlay.StatusVerdict(snapshot)
+        freshnessText := (snapshot.accepted || BC_Overlay.IsHeldFrame(snapshot)) ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
         searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
-        statusColor := snapshot.accepted
-            ? (snapshot.freshFrame ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusWarn)
-            : BC_Overlay.Palette.StatusBad
+        statusColor := BC_Overlay.StatusColor(snapshot)
         sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
         confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
         reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
@@ -721,6 +793,7 @@ class BC_Overlay {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
         BC_Overlay.LiveUiLastSnapshot := ""
+        BC_Overlay.LiveUiLastAcceptedSnapshot := ""
         snapshot := BC_State.BuildSnapshot()
         BC_State.WriteSnapshot()
         window := BC_Overlay.UpdateFromSnapshot(snapshot, title)
@@ -749,6 +822,7 @@ class BC_Overlay {
         BC_Overlay.ResetLiveUiState()
         BC_Overlay.SurfaceMode := "hud"
         BC_Overlay.LiveUiLastSnapshot := ""
+        BC_Overlay.LiveUiLastAcceptedSnapshot := ""
         snapshot := BC_State.BuildSnapshot()
         BC_State.WriteSnapshot()
         window := BC_Overlay.UpdateHudFromSnapshot(snapshot, title)
@@ -861,10 +935,14 @@ class BC_Overlay {
             result := BC_Overlay.LiveUiProvider.Call()
             BC_Overlay.CommitLiveUiResult(result)
             snapshot := BC_State.BuildSnapshot()
-            BC_Overlay.LiveUiLastSnapshot := snapshot
+            if (snapshot.accepted) {
+                BC_Overlay.LiveUiLastAcceptedSnapshot := BC_Overlay.CloneSnapshot(snapshot)
+            }
+            displaySnapshot := snapshot.accepted ? snapshot : BC_Overlay.BuildHeldDisplaySnapshot(snapshot)
+            BC_Overlay.LiveUiLastSnapshot := displaySnapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
-            BC_Overlay.RenderSnapshot(snapshot, BC_Overlay.CurrentTitle)
-            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))
+            BC_Overlay.RenderSnapshot(displaySnapshot, BC_Overlay.CurrentTitle)
+            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot))
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
             BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode liveui error`r`n" err.Message "`r`n" err.Stack)
@@ -909,6 +987,7 @@ class BC_Overlay {
         BC_Overlay.LiveUiTickCount := 0
         BC_Overlay.LiveUiStartTick := A_TickCount
         BC_Overlay.LiveUiLastSnapshot := ""
+        BC_Overlay.LiveUiLastAcceptedSnapshot := ""
         BC_Overlay.ResetLiveUiHistory()
 
         if (BC_Overlay.LiveUiMode = "synthetic") {
