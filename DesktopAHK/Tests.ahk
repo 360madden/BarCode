@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.4
+version: 0.3.10
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -30,7 +30,15 @@ class BC_Tests {
             Width: profile.BandWidth,
             Height: profile.BandHeight,
             Pixels: Buffer(profile.BandWidth * profile.BandHeight * 3, 0),
-            SourceKind: sourceKind
+            SourceKind: sourceKind,
+            RequestedSource: sourceKind,
+            ResolvedSource: sourceKind,
+            CaptureRouteReason: sourceKind,
+            CaptureFallbackFrom: "",
+            HintMode: "none",
+            HintPitch: "",
+            HintOriginX: "",
+            HintOriginY: ""
         }
         detection := BC_Interfaces.DetectionResult(profile, 0, 0, 0, 0, reason, 0, 0, 0, profile.BandWidth, profile.BandHeight, 0, searchMode)
         decodeResult := BC_Interfaces.DecodeResult([], 0, 0, 0)
@@ -241,6 +249,8 @@ class BC_Tests {
         lockedCount := 0
         searchedCount := 0
         captureSources := Map()
+        captureRoutes := Map()
+        captureHints := Map()
         rejectReasons := Map()
         firstSampleCaptureMs := ""
         firstSamplePipelineMs := ""
@@ -274,6 +284,8 @@ class BC_Tests {
                 fallbackSampleCount += 1
             }
             BC_Tests.IncrementCount(captureSources, result.Image.HasOwnProp("SourceKind") ? result.Image.SourceKind : "unknown")
+            BC_Tests.IncrementCount(captureRoutes, result.Image.HasOwnProp("CaptureRouteReason") ? result.Image.CaptureRouteReason : "unknown")
+            BC_Tests.IncrementCount(captureHints, result.Image.HasOwnProp("HintMode") ? result.Image.HintMode : "unknown")
             if (validation.IsAccepted) {
                 acceptedCount += 1
                 if (firstAcceptedSequence = "" && validation.Details.HasOwnProp("Transport")) {
@@ -331,9 +343,16 @@ class BC_Tests {
         reportLines.Push("LockedSamples: " lockedCount)
         reportLines.Push("SearchedSamples: " searchedCount)
         reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
+        reportLines.Push("CaptureRequestedSource: " (lastResult.Image.HasOwnProp("RequestedSource") ? lastResult.Image.RequestedSource : ""))
+        reportLines.Push("CaptureResolvedSource: " (lastResult.Image.HasOwnProp("ResolvedSource") ? lastResult.Image.ResolvedSource : ""))
+        reportLines.Push("CaptureRouteReason: " (lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : ""))
+        reportLines.Push("CaptureHintMode: " (lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : ""))
+        reportLines.Push("CaptureHintPitch: " (lastResult.Image.HasOwnProp("HintPitch") ? lastResult.Image.HintPitch : ""))
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
         reportLines.Push("FallbackSamples: " fallbackSampleCount)
         reportLines.Push("CaptureSourceCounts: " BC_Tests.FormatCountMap(captureSources))
+        reportLines.Push("CaptureRouteCounts: " BC_Tests.FormatCountMap(captureRoutes))
+        reportLines.Push("CaptureHintCounts: " BC_Tests.FormatCountMap(captureHints))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / sampleCount, 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / sampleCount, 2))
         reportLines.Push("FirstSampleCaptureMs: " firstSampleCaptureMs)
@@ -418,6 +437,8 @@ class BC_Tests {
         lockedCount := 0
         searchedCount := 0
         captureSources := Map()
+        captureRoutes := Map()
+        captureHints := Map()
         rejectReasons := Map()
         firstRejectedReason := ""
         firstRejectedResult := ""
@@ -441,6 +462,8 @@ class BC_Tests {
                 fallbackSampleCount += 1
             }
             BC_Tests.IncrementCount(captureSources, result.Image.HasOwnProp("SourceKind") ? result.Image.SourceKind : "unknown")
+            BC_Tests.IncrementCount(captureRoutes, result.Image.HasOwnProp("CaptureRouteReason") ? result.Image.CaptureRouteReason : "unknown")
+            BC_Tests.IncrementCount(captureHints, result.Image.HasOwnProp("HintMode") ? result.Image.HintMode : "unknown")
             if (validation.IsAccepted) {
                 acceptedCount += 1
             } else {
@@ -493,9 +516,16 @@ class BC_Tests {
         reportLines.Push("LockedSamples: " lockedCount)
         reportLines.Push("SearchedSamples: " searchedCount)
         reportLines.Push("CaptureSource: " (lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : ""))
+        reportLines.Push("CaptureRequestedSource: " (lastResult.Image.HasOwnProp("RequestedSource") ? lastResult.Image.RequestedSource : ""))
+        reportLines.Push("CaptureResolvedSource: " (lastResult.Image.HasOwnProp("ResolvedSource") ? lastResult.Image.ResolvedSource : ""))
+        reportLines.Push("CaptureRouteReason: " (lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : ""))
+        reportLines.Push("CaptureHintMode: " (lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : ""))
+        reportLines.Push("CaptureHintPitch: " (lastResult.Image.HasOwnProp("HintPitch") ? lastResult.Image.HintPitch : ""))
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
         reportLines.Push("FallbackSamples: " fallbackSampleCount)
         reportLines.Push("CaptureSourceCounts: " BC_Tests.FormatCountMap(captureSources))
+        reportLines.Push("CaptureRouteCounts: " BC_Tests.FormatCountMap(captureRoutes))
+        reportLines.Push("CaptureHintCounts: " BC_Tests.FormatCountMap(captureHints))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / Max(1, sampleCount), 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / Max(1, sampleCount), 2))
         reportLines.Push("AverageLockedPipelineMs: " (lockedCount ? Round(lockedPipelineMs / lockedCount, 2) : 0))

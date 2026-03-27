@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.7
+version: 0.3.10
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -129,6 +129,12 @@ class BC_State {
             BandWidth: details.HasOwnProp("BandWidth") ? details.BandWidth : "",
             BandHeight: details.HasOwnProp("BandHeight") ? details.BandHeight : "",
             CaptureSource: IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : "",
+            CaptureRequestedSource: IsObject(image) && image.HasOwnProp("RequestedSource") ? image.RequestedSource : "",
+            CaptureResolvedSource: IsObject(image) && image.HasOwnProp("ResolvedSource") ? image.ResolvedSource : "",
+            CaptureRouteReason: IsObject(image) && image.HasOwnProp("CaptureRouteReason") ? image.CaptureRouteReason : "",
+            CaptureFallbackFrom: IsObject(image) && image.HasOwnProp("CaptureFallbackFrom") ? image.CaptureFallbackFrom : "",
+            CaptureHintMode: IsObject(image) && image.HasOwnProp("HintMode") ? image.HintMode : "",
+            CaptureHintPitch: IsObject(image) && image.HasOwnProp("HintPitch") ? image.HintPitch : "",
             CaptureAttemptsText: IsObject(context) && context.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(context.CaptureAttempts, ",") : "",
             CaptureMs: IsObject(timings) && timings.HasOwnProp("CaptureMs") ? timings.CaptureMs : "",
             PipelineMs: IsObject(timings) && timings.HasOwnProp("PipelineMs") ? timings.PipelineMs : "",
@@ -220,6 +226,12 @@ class BC_State {
             bandWidth: BC_State.GetValue(latest, "BandWidth", ""),
             bandHeight: BC_State.GetValue(latest, "BandHeight", ""),
             captureSource: BC_State.GetValue(latest, "CaptureSource", ""),
+            captureRequestedSource: BC_State.GetValue(latest, "CaptureRequestedSource", ""),
+            captureResolvedSource: BC_State.GetValue(latest, "CaptureResolvedSource", ""),
+            captureRouteReason: BC_State.GetValue(latest, "CaptureRouteReason", ""),
+            captureFallbackFrom: BC_State.GetValue(latest, "CaptureFallbackFrom", ""),
+            captureHintMode: BC_State.GetValue(latest, "CaptureHintMode", ""),
+            captureHintPitch: BC_State.GetValue(latest, "CaptureHintPitch", ""),
             captureAttempts: BC_State.GetValue(latest, "CaptureAttemptsText", ""),
             captureMs: BC_State.GetValue(latest, "CaptureMs", ""),
             pipelineMs: BC_State.GetValue(latest, "PipelineMs", ""),
@@ -292,6 +304,12 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("bandWidth", snapshot.bandWidth))
         fields.Push(BC_State.JsonNumberField("bandHeight", snapshot.bandHeight))
         fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
+        fields.Push(BC_State.JsonStringField("captureRequestedSource", snapshot.captureRequestedSource))
+        fields.Push(BC_State.JsonStringField("captureResolvedSource", snapshot.captureResolvedSource))
+        fields.Push(BC_State.JsonStringField("captureRouteReason", snapshot.captureRouteReason))
+        fields.Push(BC_State.JsonStringField("captureFallbackFrom", snapshot.captureFallbackFrom))
+        fields.Push(BC_State.JsonStringField("captureHintMode", snapshot.captureHintMode))
+        fields.Push(BC_State.JsonNumberField("captureHintPitch", snapshot.captureHintPitch))
         fields.Push(BC_State.JsonStringField("captureAttempts", snapshot.captureAttempts))
         fields.Push(BC_State.JsonNumberField("captureMs", snapshot.captureMs))
         fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
@@ -353,6 +371,12 @@ class BC_State {
         lines.Push("Pitch: " BC_State.NumberText(snapshot.pitch))
         lines.Push("BandSize: " bandSizeText)
         lines.Push("CaptureSource: " snapshot.captureSource)
+        lines.Push("CaptureRequestedSource: " snapshot.captureRequestedSource)
+        lines.Push("CaptureResolvedSource: " snapshot.captureResolvedSource)
+        lines.Push("CaptureRouteReason: " snapshot.captureRouteReason)
+        lines.Push("CaptureFallbackFrom: " snapshot.captureFallbackFrom)
+        lines.Push("CaptureHintMode: " snapshot.captureHintMode)
+        lines.Push("CaptureHintPitch: " BC_State.NumberText(snapshot.captureHintPitch))
         lines.Push("CaptureAttempts: " snapshot.captureAttempts)
         lines.Push("CaptureMs: " BC_State.NumberText(snapshot.captureMs))
         lines.Push("PipelineMs: " BC_State.NumberText(snapshot.pipelineMs))
@@ -425,6 +449,8 @@ class BC_State {
         lines.Push(
             "Reader: " BC_State.DefaultText(snapshot.searchMode, "-")
             " | " BC_State.DefaultText(snapshot.captureSource, "-")
+            " | route " BC_State.DefaultText(snapshot.captureRouteReason, "-")
+            " | hint " BC_State.DefaultText(snapshot.captureHintMode, "-")
             " | capture " BC_State.DefaultText(snapshot.captureMs, "-") " ms"
             " | pipeline " BC_State.DefaultText(snapshot.pipelineMs, "-") " ms"
             " | reason " BC_State.DefaultText(snapshot.reason, "-")
@@ -478,6 +504,9 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
         fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
+        fields.Push(BC_State.JsonStringField("captureRouteReason", snapshot.captureRouteReason))
+        fields.Push(BC_State.JsonStringField("captureHintMode", snapshot.captureHintMode))
+        fields.Push(BC_State.JsonNumberField("captureHintPitch", snapshot.captureHintPitch))
         fields.Push(BC_State.JsonNumberField("captureMs", snapshot.captureMs))
         fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
         fields.Push(BC_State.JsonNumberField("sessionSampleCount", snapshot.sessionSampleCount))

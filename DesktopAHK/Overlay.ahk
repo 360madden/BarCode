@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.8
+version: 0.3.10
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -573,6 +573,8 @@ class BC_Overlay {
         lines.Push("Window: " BC_Overlay.SafeText(snapshot.windowTitle, "-"))
         lines.Push("Process: " BC_Overlay.SafeText(snapshot.processName, "-"))
         lines.Push("Capture: " BC_Overlay.SafeText(snapshot.captureSource, "-") " (" capturePath ")")
+        lines.Push("Route / Hint: " BC_Overlay.SafeText(snapshot.captureRouteReason, "-") " / " BC_Overlay.SafeText(snapshot.captureHintMode, "-"))
+        lines.Push("Requested / Resolved: " BC_Overlay.SafeText(snapshot.captureRequestedSource, "-") " / " BC_Overlay.SafeText(snapshot.captureResolvedSource, "-"))
         lines.Push("Attempts: " BC_Overlay.SafeText(snapshot.captureAttempts, "-"))
         lines.Push("Capture / Pipeline ms: " BC_Overlay.SafeText(snapshot.captureMs, "-") " / " BC_Overlay.SafeText(snapshot.pipelineMs, "-"))
         lines.Push("Origin / Border: " BC_Overlay.SafeText(snapshot.originX, "-") "," BC_Overlay.SafeText(snapshot.originY, "-") " / " BC_Overlay.SafeText(snapshot.borderErrors, "-"))

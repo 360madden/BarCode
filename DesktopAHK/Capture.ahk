@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Capture.ahk
-version: 0.3.0
+version: 0.3.10
 purpose: Provides BMP and live window capture for the BarCode reader, including top-slice extraction for scaled panel solve.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk
  important assumptions: BMP inputs may contain a larger screenshot around the strip, and live capture relies on normal Win32 desktop/window capture availability.
@@ -17,6 +17,14 @@ class BC_Capture {
         image := BC_Debug.ReadBmp24(path)
         profile := BC_Config.ProfileP720A()
         image.SourceKind := "bmp"
+        image.RequestedSource := "bmp"
+        image.ResolvedSource := "bmp"
+        image.CaptureRouteReason := "bmp-input"
+        image.CaptureFallbackFrom := ""
+        image.HintMode := "none"
+        image.HintPitch := ""
+        image.HintOriginX := ""
+        image.HintOriginY := ""
 
         if (cropX = 0 && cropY = 0 && image.Width = profile.BandWidth && image.Height = profile.BandHeight) {
             return image
@@ -34,6 +42,14 @@ class BC_Capture {
         searchHeight := Min(image.Height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
         cropped := BC_Capture.CropRect(image, cropX, cropY, searchWidth, searchHeight)
         cropped.SourceKind := "bmp"
+        cropped.RequestedSource := "bmp"
+        cropped.ResolvedSource := "bmp"
+        cropped.CaptureRouteReason := "bmp-input"
+        cropped.CaptureFallbackFrom := ""
+        cropped.HintMode := "none"
+        cropped.HintPitch := ""
+        cropped.HintOriginX := ""
+        cropped.HintOriginY := ""
         return cropped
     }
 
@@ -41,6 +57,9 @@ class BC_Capture {
         client := BC_Capture.GetClientRectOnScreen(hwnd)
         profile := BC_Config.ProfileP720A()
         isOccluded := false
+        requestedSource := sourcePreference
+        routeReason := ""
+        fallbackFrom := ""
         geometryHint := BC_Capture.FilterGeometryHintForClient(client, geometryHint)
 
         if (client.width <= cropX || client.height <= cropY) {
@@ -55,8 +74,10 @@ class BC_Capture {
         if (sourcePreference = "auto") {
             if !BC_Capture.IsCaptureRectFullyVisible(captureLeft, captureTop, captureWidth, captureHeight) {
                 sourcePreference := "printwindow"
+                routeReason := "auto-offscreen"
             } else {
                 isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
+                routeReason := isOccluded ? "auto-occluded" : "auto-visible"
             }
 
             if (sourcePreference = "printwindow" || isOccluded) {
@@ -71,29 +92,65 @@ class BC_Capture {
                     if BC_Capture.IsCaptureRectFullyVisible(captureLeft, captureTop, captureWidth, captureHeight) {
                         isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
                         sourcePreference := isOccluded ? "printwindow" : "screen"
+                        routeReason := isOccluded ? "auto-occluded" : "auto-recovered-visible"
                     } else {
                         sourcePreference := "printwindow"
+                        routeReason := "auto-offscreen"
                     }
                 }
             } else {
                 sourcePreference := "screen"
             }
+        } else if (sourcePreference = "screen") {
+            routeReason := "forced-screen"
+        } else if (sourcePreference = "printwindow") {
+            routeReason := "forced-printwindow"
         }
 
         if (sourcePreference != "screen") {
             try {
                 image := BC_Capture.CaptureWindowClientRect(hwnd, cropX, cropY, captureWidth, captureHeight, client)
-                return BC_Capture.AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, "printwindow-client")
+                return BC_Capture.AttachWindowMetadata(
+                    image,
+                    hwnd,
+                    client,
+                    captureLeft,
+                    captureTop,
+                    captureWidth,
+                    captureHeight,
+                    "printwindow-client",
+                    requestedSource,
+                    "printwindow",
+                    routeReason,
+                    fallbackFrom,
+                    geometryHint
+                )
             } catch as err {
                 BC_Debug.Trace("capture.printwindow:fail=" err.Message "`r`n")
                 if (sourcePreference = "printwindow") {
                     throw
                 }
+                fallbackFrom := "printwindow"
+                routeReason := routeReason = "" ? "printwindow-failed" : (routeReason "|printwindow-failed")
             }
         }
 
         image := BC_Capture.CaptureScreenRect(captureLeft, captureTop, captureWidth, captureHeight)
-        return BC_Capture.AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, "screen-bitblt")
+        return BC_Capture.AttachWindowMetadata(
+            image,
+            hwnd,
+            client,
+            captureLeft,
+            captureTop,
+            captureWidth,
+            captureHeight,
+            "screen-bitblt",
+            requestedSource,
+            "screen",
+            routeReason = "" ? (requestedSource = "screen" ? "forced-screen" : "auto-visible") : routeReason,
+            fallbackFrom,
+            geometryHint
+        )
     }
 
     static IsCaptureRectFullyVisible(left, top, width, height) {
@@ -267,7 +324,7 @@ class BC_Capture {
         }
     }
 
-    static AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, sourceKind) {
+    static AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, sourceKind, requestedSource := "", resolvedSource := "", routeReason := "", fallbackFrom := "", geometryHint := "") {
         image.Hwnd := hwnd
         image.SourceLeft := captureLeft
         image.SourceTop := captureTop
@@ -275,6 +332,14 @@ class BC_Capture {
         image.SourceHeight := captureHeight
         image.ClientRect := client
         image.SourceKind := sourceKind
+        image.RequestedSource := requestedSource
+        image.ResolvedSource := resolvedSource
+        image.CaptureRouteReason := routeReason
+        image.CaptureFallbackFrom := fallbackFrom
+        image.HintMode := IsObject(geometryHint) ? "locked" : "none"
+        image.HintPitch := IsObject(geometryHint) && geometryHint.HasOwnProp("Pitch") ? geometryHint.Pitch : ""
+        image.HintOriginX := IsObject(geometryHint) && geometryHint.HasOwnProp("OriginX") ? geometryHint.OriginX : ""
+        image.HintOriginY := IsObject(geometryHint) && geometryHint.HasOwnProp("OriginY") ? geometryHint.OriginY : ""
         return image
     }
 
