@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.11
+version: 0.3.12
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -484,11 +484,17 @@ class BC_State {
             " | reason " BC_State.DefaultText(snapshot.reason, "-")
         )
         lines.Push(
+            "Rects: client " BC_State.RectText(snapshot.clientX, snapshot.clientY, snapshot.clientWidth, snapshot.clientHeight)
+            " | capture " BC_State.RectText(snapshot.captureLeft, snapshot.captureTop, snapshot.captureWidth, snapshot.captureHeight)
+        )
+        lines.Push(
             "Session: " BC_State.DefaultText(snapshot.sessionSampleCount, "0")
             " samples | accepted " BC_State.DefaultText(snapshot.sessionAcceptedCount, "0")
             " | rejected " BC_State.DefaultText(snapshot.sessionRejectedCount, "0")
             " | streak " BC_State.DefaultText(snapshot.acceptedStreak, "0")
             "/" BC_State.DefaultText(snapshot.rejectedStreak, "0")
+            " | repeats " BC_State.DefaultText(snapshot.sequenceRepeatedCount, "0")
+            " | wraps " BC_State.DefaultText(snapshot.sequenceWrapCount, "0")
         )
         return BC_Debug.Join(lines, "`r`n")
     }

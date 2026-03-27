@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.11
+version: 0.3.12
 purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
 important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
@@ -416,8 +416,12 @@ class BC_Tests {
                 LockedSamples: lockedCount,
                 SearchedSamples: searchedCount,
                 CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                ClientRectText: BC_State.RectText(client.x, client.y, client.width, client.height),
+                CaptureRectText: BC_State.RectText(lastResult.Image.SourceLeft, lastResult.Image.SourceTop, lastResult.Image.SourceWidth, lastResult.Image.SourceHeight),
                 CaptureRouteReason: lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : "",
                 CaptureHintMode: lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : "",
+                AverageCaptureMs: Round(totalCaptureMs / sampleCount, 2),
+                AveragePipelineMs: Round(totalPipelineMs / sampleCount, 2),
                 FallbackSamples: fallbackSampleCount,
                 LastReason: validation.Reason
             }
@@ -572,8 +576,12 @@ class BC_Tests {
                 LockedSamples: lockedCount,
                 SearchedSamples: searchedCount,
                 CaptureSource: lastResult.Image.HasOwnProp("SourceKind") ? lastResult.Image.SourceKind : "",
+                ClientRectText: BC_State.RectText(client.x, client.y, client.width, client.height),
+                CaptureRectText: BC_State.RectText(lastResult.Image.SourceLeft, lastResult.Image.SourceTop, lastResult.Image.SourceWidth, lastResult.Image.SourceHeight),
                 CaptureRouteReason: lastResult.Image.HasOwnProp("CaptureRouteReason") ? lastResult.Image.CaptureRouteReason : "",
                 CaptureHintMode: lastResult.Image.HasOwnProp("HintMode") ? lastResult.Image.HintMode : "",
+                AverageCaptureMs: Round(totalCaptureMs / Max(1, sampleCount), 2),
+                AveragePipelineMs: Round(totalPipelineMs / Max(1, sampleCount), 2),
                 FallbackSamples: fallbackSampleCount,
                 LastReason: validation.Reason
             }

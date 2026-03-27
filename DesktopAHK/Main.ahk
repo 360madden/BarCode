@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.10
+version: 0.3.12
 purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
 important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
@@ -97,11 +97,23 @@ BC_MainBuildSummaryText(mode, result) {
         lines.Push("LockedSamples: " summary.LockedSamples)
         lines.Push("SearchedSamples: " summary.SearchedSamples)
         lines.Push("CaptureSource: " summary.CaptureSource)
+        if (summary.HasOwnProp("ClientRectText")) {
+            lines.Push("ClientRect: " summary.ClientRectText)
+        }
+        if (summary.HasOwnProp("CaptureRectText")) {
+            lines.Push("CaptureRect: " summary.CaptureRectText)
+        }
         if (summary.HasOwnProp("CaptureRouteReason")) {
             lines.Push("CaptureRouteReason: " summary.CaptureRouteReason)
         }
         if (summary.HasOwnProp("CaptureHintMode")) {
             lines.Push("CaptureHintMode: " summary.CaptureHintMode)
+        }
+        if (summary.HasOwnProp("AverageCaptureMs")) {
+            lines.Push("AverageCaptureMs: " summary.AverageCaptureMs)
+        }
+        if (summary.HasOwnProp("AveragePipelineMs")) {
+            lines.Push("AveragePipelineMs: " summary.AveragePipelineMs)
         }
         lines.Push("FallbackSamples: " summary.FallbackSamples)
         lines.Push("LastReason: " summary.LastReason)
