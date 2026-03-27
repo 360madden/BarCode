@@ -575,6 +575,7 @@ class BC_Overlay {
         lines.Push("Capture: " BC_Overlay.SafeText(snapshot.captureSource, "-") " (" capturePath ")")
         lines.Push("Route / Hint: " BC_Overlay.SafeText(snapshot.captureRouteReason, "-") " / " BC_Overlay.SafeText(snapshot.captureHintMode, "-"))
         lines.Push("Requested / Resolved: " BC_Overlay.SafeText(snapshot.captureRequestedSource, "-") " / " BC_Overlay.SafeText(snapshot.captureResolvedSource, "-"))
+        lines.Push("Client / Capture: " BC_State.RectText(snapshot.clientX, snapshot.clientY, snapshot.clientWidth, snapshot.clientHeight) " / " BC_State.RectText(snapshot.captureLeft, snapshot.captureTop, snapshot.captureWidth, snapshot.captureHeight))
         lines.Push("Attempts: " BC_Overlay.SafeText(snapshot.captureAttempts, "-"))
         lines.Push("Capture / Pipeline ms: " BC_Overlay.SafeText(snapshot.captureMs, "-") " / " BC_Overlay.SafeText(snapshot.pipelineMs, "-"))
         lines.Push("Origin / Border: " BC_Overlay.SafeText(snapshot.originX, "-") "," BC_Overlay.SafeText(snapshot.originY, "-") " / " BC_Overlay.SafeText(snapshot.borderErrors, "-"))

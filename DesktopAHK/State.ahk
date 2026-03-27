@@ -135,6 +135,14 @@ class BC_State {
             CaptureFallbackFrom: IsObject(image) && image.HasOwnProp("CaptureFallbackFrom") ? image.CaptureFallbackFrom : "",
             CaptureHintMode: IsObject(image) && image.HasOwnProp("HintMode") ? image.HintMode : "",
             CaptureHintPitch: IsObject(image) && image.HasOwnProp("HintPitch") ? image.HintPitch : "",
+            ClientX: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.x : "",
+            ClientY: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.y : "",
+            ClientWidth: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.width : "",
+            ClientHeight: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.height : "",
+            CaptureLeft: IsObject(image) && image.HasOwnProp("SourceLeft") ? image.SourceLeft : "",
+            CaptureTop: IsObject(image) && image.HasOwnProp("SourceTop") ? image.SourceTop : "",
+            CaptureWidth: IsObject(image) && image.HasOwnProp("SourceWidth") ? image.SourceWidth : "",
+            CaptureHeight: IsObject(image) && image.HasOwnProp("SourceHeight") ? image.SourceHeight : "",
             CaptureAttemptsText: IsObject(context) && context.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(context.CaptureAttempts, ",") : "",
             CaptureMs: IsObject(timings) && timings.HasOwnProp("CaptureMs") ? timings.CaptureMs : "",
             PipelineMs: IsObject(timings) && timings.HasOwnProp("PipelineMs") ? timings.PipelineMs : "",
@@ -232,6 +240,14 @@ class BC_State {
             captureFallbackFrom: BC_State.GetValue(latest, "CaptureFallbackFrom", ""),
             captureHintMode: BC_State.GetValue(latest, "CaptureHintMode", ""),
             captureHintPitch: BC_State.GetValue(latest, "CaptureHintPitch", ""),
+            clientX: BC_State.GetValue(latest, "ClientX", ""),
+            clientY: BC_State.GetValue(latest, "ClientY", ""),
+            clientWidth: BC_State.GetValue(latest, "ClientWidth", ""),
+            clientHeight: BC_State.GetValue(latest, "ClientHeight", ""),
+            captureLeft: BC_State.GetValue(latest, "CaptureLeft", ""),
+            captureTop: BC_State.GetValue(latest, "CaptureTop", ""),
+            captureWidth: BC_State.GetValue(latest, "CaptureWidth", ""),
+            captureHeight: BC_State.GetValue(latest, "CaptureHeight", ""),
             captureAttempts: BC_State.GetValue(latest, "CaptureAttemptsText", ""),
             captureMs: BC_State.GetValue(latest, "CaptureMs", ""),
             pipelineMs: BC_State.GetValue(latest, "PipelineMs", ""),
@@ -310,6 +326,14 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("captureFallbackFrom", snapshot.captureFallbackFrom))
         fields.Push(BC_State.JsonStringField("captureHintMode", snapshot.captureHintMode))
         fields.Push(BC_State.JsonNumberField("captureHintPitch", snapshot.captureHintPitch))
+        fields.Push(BC_State.JsonNumberField("clientX", snapshot.clientX))
+        fields.Push(BC_State.JsonNumberField("clientY", snapshot.clientY))
+        fields.Push(BC_State.JsonNumberField("clientWidth", snapshot.clientWidth))
+        fields.Push(BC_State.JsonNumberField("clientHeight", snapshot.clientHeight))
+        fields.Push(BC_State.JsonNumberField("captureLeft", snapshot.captureLeft))
+        fields.Push(BC_State.JsonNumberField("captureTop", snapshot.captureTop))
+        fields.Push(BC_State.JsonNumberField("captureWidth", snapshot.captureWidth))
+        fields.Push(BC_State.JsonNumberField("captureHeight", snapshot.captureHeight))
         fields.Push(BC_State.JsonStringField("captureAttempts", snapshot.captureAttempts))
         fields.Push(BC_State.JsonNumberField("captureMs", snapshot.captureMs))
         fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
@@ -341,6 +365,8 @@ class BC_State {
         lines := []
         originText := BC_State.NumberText(snapshot.originX) "," BC_State.NumberText(snapshot.originY)
         bandSizeText := BC_State.NumberText(snapshot.bandWidth) "x" BC_State.NumberText(snapshot.bandHeight)
+        clientRectText := BC_State.RectText(snapshot.clientX, snapshot.clientY, snapshot.clientWidth, snapshot.clientHeight)
+        captureRectText := BC_State.RectText(snapshot.captureLeft, snapshot.captureTop, snapshot.captureWidth, snapshot.captureHeight)
         lines.Push("BarCode live state snapshot")
         lines.Push("TimestampUtc: " snapshot.timestampUtc)
         lines.Push("Accepted: " BC_State.BoolText(snapshot.accepted))
@@ -377,6 +403,8 @@ class BC_State {
         lines.Push("CaptureFallbackFrom: " snapshot.captureFallbackFrom)
         lines.Push("CaptureHintMode: " snapshot.captureHintMode)
         lines.Push("CaptureHintPitch: " BC_State.NumberText(snapshot.captureHintPitch))
+        lines.Push("ClientRect: " clientRectText)
+        lines.Push("CaptureRect: " captureRectText)
         lines.Push("CaptureAttempts: " snapshot.captureAttempts)
         lines.Push("CaptureMs: " BC_State.NumberText(snapshot.captureMs))
         lines.Push("PipelineMs: " BC_State.NumberText(snapshot.pipelineMs))
@@ -507,6 +535,14 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("captureRouteReason", snapshot.captureRouteReason))
         fields.Push(BC_State.JsonStringField("captureHintMode", snapshot.captureHintMode))
         fields.Push(BC_State.JsonNumberField("captureHintPitch", snapshot.captureHintPitch))
+        fields.Push(BC_State.JsonNumberField("clientX", snapshot.clientX))
+        fields.Push(BC_State.JsonNumberField("clientY", snapshot.clientY))
+        fields.Push(BC_State.JsonNumberField("clientWidth", snapshot.clientWidth))
+        fields.Push(BC_State.JsonNumberField("clientHeight", snapshot.clientHeight))
+        fields.Push(BC_State.JsonNumberField("captureLeft", snapshot.captureLeft))
+        fields.Push(BC_State.JsonNumberField("captureTop", snapshot.captureTop))
+        fields.Push(BC_State.JsonNumberField("captureWidth", snapshot.captureWidth))
+        fields.Push(BC_State.JsonNumberField("captureHeight", snapshot.captureHeight))
         fields.Push(BC_State.JsonNumberField("captureMs", snapshot.captureMs))
         fields.Push(BC_State.JsonNumberField("pipelineMs", snapshot.pipelineMs))
         fields.Push(BC_State.JsonNumberField("sessionSampleCount", snapshot.sessionSampleCount))
@@ -994,6 +1030,17 @@ class BC_State {
             return fallback
         }
         return leftText "/" rightText
+    }
+
+    static RectText(left, top, width, height, fallback := "-") {
+        leftText := BC_State.NumberText(left)
+        topText := BC_State.NumberText(top)
+        widthText := BC_State.NumberText(width)
+        heightText := BC_State.NumberText(height)
+        if (leftText = "" || topText = "" || widthText = "" || heightText = "") {
+            return fallback
+        }
+        return leftText "," topText " " widthText "x" heightText
     }
 
     static Percent(current, maximum) {
