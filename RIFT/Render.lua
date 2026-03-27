@@ -1,5 +1,5 @@
 -- script name: RIFT/Render.lua
--- version: 0.3.0
+-- version: 0.3.2
 -- purpose: Creates and updates the live BC-Strip/1 protocol band with a full-width reserved top band.
 -- dependencies: Core/Config.lua, Core/Protocol.lua, Core/Pack.lua, Core/Gather.lua, RIFT/Diagnostics.lua
 -- important assumptions: Assumes Frame:SetPoint, Frame:SetBackgroundColor, and Frame:SetVisible behave per current documented RIFT UI API.
@@ -32,6 +32,74 @@ function BarCode.Render.CreateModuleFrame(parent, name, x, y, size, color, layer
   frame:SetLayer(layer)
   BarCode.Render.ApplyColor(frame, color)
   return frame
+end
+
+function BarCode.Render.SetFrameVisible(frame, isVisible)
+  frame:SetVisible(isVisible and true or false)
+end
+
+function BarCode.Render.CreatePanelBuffer(parent, namePrefix, profile, config, layer, borderPositions)
+  local panel
+  local borderFrames = {}
+  local dataFrames = {}
+  local lastBits = {}
+  local dataIndex = 1
+  local borderIndex = 1
+  local rowIndex
+  local colIndex
+  local key
+
+  panel = BarCode.Render.CreateBlock(
+    parent,
+    namePrefix .. "_SymbolPanel",
+    0,
+    0,
+    profile.bandWidth,
+    profile.bandHeight,
+    config.colors.symbolPanelLight,
+    layer
+  )
+
+  for key, position in pairs(borderPositions) do
+    borderFrames[borderIndex] = BarCode.Render.CreateModuleFrame(
+      panel,
+      namePrefix .. "_Border_" .. tostring(borderIndex),
+      profile.quietLeft + ((position.column - 1) * profile.pitch),
+      profile.quietTop + ((position.row - 1) * profile.pitch),
+      profile.pitch,
+      config.colors.moduleDark,
+      layer + 1
+    )
+    borderIndex = borderIndex + 1
+  end
+
+  for rowIndex = 2, profile.gridRows - 1 do
+    for colIndex = 2, profile.gridColumns - 1 do
+      dataFrames[dataIndex] = BarCode.Render.CreateModuleFrame(
+        panel,
+        namePrefix .. "_Data_" .. tostring(dataIndex),
+        profile.quietLeft + ((colIndex - 1) * profile.pitch),
+        profile.quietTop + ((rowIndex - 1) * profile.pitch),
+        profile.pitch,
+        config.colors.moduleDark,
+        layer + 2
+      )
+      BarCode.Render.SetFrameVisible(dataFrames[dataIndex], false)
+      lastBits[dataIndex] = 0
+      dataIndex = dataIndex + 1
+    end
+  end
+
+  return {
+    panel = panel,
+    borderFrames = borderFrames,
+    dataFrames = dataFrames,
+    lastBits = lastBits
+  }
+end
+
+function BarCode.Render.SetBufferVisible(buffer, isVisible)
+  BarCode.Render.SetFrameVisible(buffer.panel, isVisible)
 end
 
 function BarCode.Render.BuildStaticBorderPositions(profile)
@@ -97,15 +165,8 @@ function BarCode.Render.InitializeLiveBand(rootFrame)
   local reservedBandWidth = clientWidth
   local borderPositions = BarCode.Render.BuildStaticBorderPositions(profile)
   local band
-  local panel
-  local borderFrames = {}
-  local dataFrames = {}
-  local lastBits = {}
-  local dataIndex = 1
-  local borderIndex = 1
-  local rowIndex
-  local colIndex
-  local key
+  local buffers = {}
+  local bufferIndex
 
   if reservedBandWidth < profile.bandWidth then
     reservedBandWidth = profile.bandWidth
@@ -122,56 +183,25 @@ function BarCode.Render.InitializeLiveBand(rootFrame)
     config.requestedLayer
   )
 
-  panel = BarCode.Render.CreateBlock(
-    band,
-    "BarCode_SymbolPanel",
-    0,
-    0,
-    profile.bandWidth,
-    profile.bandHeight,
-    config.colors.symbolPanelLight,
-    config.requestedLayer + 1
-  )
-
-  for key, position in pairs(borderPositions) do
-    borderFrames[borderIndex] = BarCode.Render.CreateModuleFrame(
-      panel,
-      "BarCode_Border_" .. tostring(borderIndex),
-      profile.quietLeft + ((position.column - 1) * profile.pitch),
-      profile.quietTop + ((position.row - 1) * profile.pitch),
-      profile.pitch,
-      config.colors.moduleDark,
-      config.requestedLayer + 2
+  for bufferIndex = 1, 2 do
+    buffers[bufferIndex] = BarCode.Render.CreatePanelBuffer(
+      band,
+      "BarCode_Buffer" .. tostring(bufferIndex),
+      profile,
+      config,
+      config.requestedLayer + 1,
+      borderPositions
     )
-    borderIndex = borderIndex + 1
-  end
-
-  for rowIndex = 2, profile.gridRows - 1 do
-    for colIndex = 2, profile.gridColumns - 1 do
-      dataFrames[dataIndex] = BarCode.Render.CreateModuleFrame(
-        panel,
-        "BarCode_Data_" .. tostring(dataIndex),
-        profile.quietLeft + ((colIndex - 1) * profile.pitch),
-        profile.quietTop + ((rowIndex - 1) * profile.pitch),
-        profile.pitch,
-        config.colors.moduleDark,
-        config.requestedLayer + 3
-      )
-      dataFrames[dataIndex]:SetVisible(false)
-      lastBits[dataIndex] = 0
-      dataIndex = dataIndex + 1
-    end
+    BarCode.Render.SetBufferVisible(buffers[bufferIndex], bufferIndex == 1)
   end
 
   return {
     profile = profile,
     band = band,
-    panel = panel,
-    borderFrames = borderFrames,
-    dataFrames = dataFrames,
-    lastBits = lastBits,
+    buffers = buffers,
     lastFrameBytes = nil,
-    currentBandWidth = reservedBandWidth
+    currentBandWidth = reservedBandWidth,
+    activeBufferIndex = 1
   }
 end
 
@@ -190,36 +220,48 @@ end
 
 function BarCode.Render.UpdateLiveBand(renderState, snapshot, frameBytes)
   BarCode.Render.ApplyReservedBandWidth(renderState, snapshot.clientWidth)
+  local activeBufferIndex = renderState.activeBufferIndex or 1
+  local activeBuffer = renderState.buffers[activeBufferIndex]
 
   if BarCode.Render.FrameBytesEqual(renderState.lastFrameBytes, frameBytes) then
     return {
       changedCount = 0,
-      bitCount = #renderState.dataFrames,
+      bitCount = #activeBuffer.dataFrames,
       bandWidth = renderState.currentBandWidth,
-      bytesUnchanged = true
+      bytesUnchanged = true,
+      swapped = false,
+      activeBufferIndex = activeBufferIndex
     }
   end
 
   local bits = BarCode.Pack.BytesToBits(frameBytes)
   local changedCount = 0
+  local nextBufferIndex = activeBufferIndex == 1 and 2 or 1
+  local nextBuffer = renderState.buffers[nextBufferIndex]
   local index
 
-  for index = 1, #renderState.dataFrames do
+  for index = 1, #nextBuffer.dataFrames do
     local bit = bits[index] or 0
-    if renderState.lastBits[index] ~= bit then
-      renderState.dataFrames[index]:SetVisible(bit == 1)
-      renderState.lastBits[index] = bit
+    if nextBuffer.lastBits[index] ~= bit then
+      BarCode.Render.SetFrameVisible(nextBuffer.dataFrames[index], bit == 1)
+      nextBuffer.lastBits[index] = bit
       changedCount = changedCount + 1
     end
   end
+
+  BarCode.Render.SetBufferVisible(nextBuffer, true)
+  BarCode.Render.SetBufferVisible(activeBuffer, false)
+  renderState.activeBufferIndex = nextBufferIndex
 
   renderState.lastFrameBytes = BarCode.Render.CopyFrameBytes(frameBytes)
 
   return {
     changedCount = changedCount,
-    bitCount = #renderState.dataFrames,
+    bitCount = #nextBuffer.dataFrames,
     bandWidth = renderState.currentBandWidth,
-    bytesUnchanged = false
+    bytesUnchanged = false,
+    swapped = true,
+    activeBufferIndex = nextBufferIndex
   }
 end
 
