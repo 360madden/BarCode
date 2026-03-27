@@ -12,13 +12,42 @@ character count note: Character count not precomputed; measure with tooling if n
 class BC_State {
     static Latest := {}
     static LockedGeometry := {}
+    static LockedGeometryLoaded := false
     static Session := {}
     static History := []
 
     static GetLockedGeometry() {
+        BC_State.EnsureLockedGeometryLoaded()
         return IsObject(BC_State.LockedGeometry) && BC_State.LockedGeometry.HasOwnProp("Pitch")
             ? BC_State.LockedGeometry
             : ""
+    }
+
+    static GetLockedGeometryForClient(client := "") {
+        geometry := BC_State.GetLockedGeometry()
+        if !IsObject(geometry) {
+            return ""
+        }
+
+        if !IsObject(client) || !client.HasOwnProp("width") || !client.HasOwnProp("height") {
+            return geometry
+        }
+
+        if (geometry.ClientWidth = "" || geometry.ClientHeight = "") {
+            return geometry
+        }
+
+        return (geometry.ClientWidth = client.width && geometry.ClientHeight = client.height)
+            ? geometry
+            : ""
+    }
+
+    static GetLockedGeometryForImage(image := "") {
+        if !IsObject(image) || !image.HasOwnProp("ClientRect") {
+            return BC_State.GetLockedGeometry()
+        }
+
+        return BC_State.GetLockedGeometryForClient(image.ClientRect)
     }
 
     static ResetLiveOutputs() {
@@ -40,12 +69,15 @@ class BC_State {
         sequence := transport.HasOwnProp("Sequence") ? transport.Sequence : ""
         sessionStats := BC_State.UpdateSessionStats(validationResult, sampleIndex, sequence)
 
-        if (validationResult.IsAccepted && details.HasOwnProp("Pitch") && details.Pitch > 0) {
+        if (validationResult.IsAccepted && details.HasOwnProp("Pitch") && details.Pitch > 0 && BC_State.ShouldUpdateLockedGeometry(image)) {
             BC_State.LockedGeometry := {
                 OriginX: details.OriginX,
                 OriginY: details.OriginY,
-                Pitch: details.Pitch
+                Pitch: details.Pitch,
+                ClientWidth: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.width : "",
+                ClientHeight: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.height : ""
             }
+            BC_State.PersistLockedGeometry()
         }
 
         latest := {
@@ -449,6 +481,71 @@ class BC_State {
         return BC_State.History
     }
 
+    static EnsureLockedGeometryLoaded() {
+        if BC_State.LockedGeometryLoaded {
+            return
+        }
+
+        BC_State.LockedGeometryLoaded := true
+        if !FileExist(BC_Config.LockedGeometryPath) {
+            return
+        }
+
+        try {
+            content := FileRead(BC_Config.LockedGeometryPath, "UTF-8")
+            originX := ""
+            originY := ""
+            pitch := ""
+            clientWidth := ""
+            clientHeight := ""
+
+            if RegExMatch(content, "i)OriginX:\s*(-?\d+)", &originXMatch) {
+                originX := Integer(originXMatch[1])
+            }
+            if RegExMatch(content, "i)OriginY:\s*(-?\d+)", &originYMatch) {
+                originY := Integer(originYMatch[1])
+            }
+            if RegExMatch(content, "i)Pitch:\s*([0-9]+(?:\.[0-9]+)?)", &pitchMatch) {
+                pitch := Number(pitchMatch[1])
+            }
+            if RegExMatch(content, "i)ClientWidth:\s*(\d+)", &clientWidthMatch) {
+                clientWidth := Integer(clientWidthMatch[1])
+            }
+            if RegExMatch(content, "i)ClientHeight:\s*(\d+)", &clientHeightMatch) {
+                clientHeight := Integer(clientHeightMatch[1])
+            }
+
+            if (pitch != "" && pitch > 0) {
+                BC_State.LockedGeometry := {
+                    OriginX: originX = "" ? 0 : originX,
+                    OriginY: originY = "" ? 0 : originY,
+                    Pitch: pitch,
+                    ClientWidth: clientWidth,
+                    ClientHeight: clientHeight
+                }
+            }
+        } catch {
+        }
+    }
+
+    static PersistLockedGeometry() {
+        if !IsObject(BC_State.LockedGeometry) || !BC_State.LockedGeometry.HasOwnProp("Pitch") || (BC_State.LockedGeometry.Pitch <= 0) {
+            return
+        }
+
+        lines := []
+        lines.Push("OriginX: " BC_State.LockedGeometry.OriginX)
+        lines.Push("OriginY: " BC_State.LockedGeometry.OriginY)
+        lines.Push("Pitch: " BC_State.LockedGeometry.Pitch)
+        if (BC_State.LockedGeometry.HasOwnProp("ClientWidth") && BC_State.LockedGeometry.ClientWidth != "") {
+            lines.Push("ClientWidth: " BC_State.LockedGeometry.ClientWidth)
+        }
+        if (BC_State.LockedGeometry.HasOwnProp("ClientHeight") && BC_State.LockedGeometry.ClientHeight != "") {
+            lines.Push("ClientHeight: " BC_State.LockedGeometry.ClientHeight)
+        }
+        BC_Debug.WriteText(BC_Config.LockedGeometryPath, BC_Debug.Join(lines, "`r`n"))
+    }
+
     static UpdateSessionStats(validationResult, sampleIndex, sequence) {
         session := BC_State.EnsureSession()
 
@@ -526,6 +623,15 @@ class BC_State {
             }
         }
         return ""
+    }
+
+    static ShouldUpdateLockedGeometry(image) {
+        if (!IsObject(image) || !image.HasOwnProp("SourceKind")) {
+            return true
+        }
+
+        sourceKind := image.SourceKind
+        return sourceKind != "synthetic" && sourceKind != "unavailable" && sourceKind != "live-window-missing"
     }
 
     static ResourceKindName(kindId) {

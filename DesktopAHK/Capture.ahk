@@ -16,6 +16,7 @@ class BC_Capture {
     static AcquireFromBmp(path, cropX := 0, cropY := 0) {
         image := BC_Debug.ReadBmp24(path)
         profile := BC_Config.ProfileP720A()
+        image.SourceKind := "bmp"
 
         if (cropX = 0 && cropY = 0 && image.Width = profile.BandWidth && image.Height = profile.BandHeight) {
             return image
@@ -31,13 +32,16 @@ class BC_Capture {
 
         searchWidth := image.Width - cropX
         searchHeight := Min(image.Height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
-        return BC_Capture.CropRect(image, cropX, cropY, searchWidth, searchHeight)
+        cropped := BC_Capture.CropRect(image, cropX, cropY, searchWidth, searchHeight)
+        cropped.SourceKind := "bmp"
+        return cropped
     }
 
-    static AcquireFromWindow(hwnd, cropX := 0, cropY := 0, sourcePreference := "auto") {
+    static AcquireFromWindow(hwnd, cropX := 0, cropY := 0, sourcePreference := "auto", geometryHint := "") {
         client := BC_Capture.GetClientRectOnScreen(hwnd)
         profile := BC_Config.ProfileP720A()
         isOccluded := false
+        geometryHint := BC_Capture.FilterGeometryHintForClient(client, geometryHint)
 
         if (client.width <= cropX || client.height <= cropY) {
             throw Error("Requested live capture crop exceeds the RIFT client area.")
@@ -46,7 +50,7 @@ class BC_Capture {
         captureLeft := client.x + cropX
         captureTop := client.y + cropY
         captureWidth := client.width - cropX
-        captureHeight := Min(client.height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
+        captureHeight := BC_Capture.ResolveCaptureHeight(client.height - cropY, profile, geometryHint)
 
         if (sourcePreference = "auto") {
             isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
@@ -54,10 +58,11 @@ class BC_Capture {
                 if (BC_Capture.TryActivateWindow(hwnd)) {
                     Sleep 80
                     client := BC_Capture.GetClientRectOnScreen(hwnd)
+                    geometryHint := BC_Capture.FilterGeometryHintForClient(client, geometryHint)
                     captureLeft := client.x + cropX
                     captureTop := client.y + cropY
                     captureWidth := client.width - cropX
-                    captureHeight := Min(client.height - cropY, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
+                    captureHeight := BC_Capture.ResolveCaptureHeight(client.height - cropY, profile, geometryHint)
                     isOccluded := BC_Capture.IsBandRegionOccluded(hwnd, client, cropX, cropY, captureWidth, captureHeight)
                 }
 
@@ -81,6 +86,37 @@ class BC_Capture {
 
         image := BC_Capture.CaptureScreenRect(captureLeft, captureTop, captureWidth, captureHeight)
         return BC_Capture.AttachWindowMetadata(image, hwnd, client, captureLeft, captureTop, captureWidth, captureHeight, "screen-bitblt")
+    }
+
+    static FilterGeometryHintForClient(client, geometryHint := "") {
+        if !IsObject(geometryHint) || !geometryHint.HasOwnProp("Pitch") || (geometryHint.Pitch <= 0) {
+            return ""
+        }
+
+        if (geometryHint.HasOwnProp("ClientWidth") && geometryHint.ClientWidth != "" && geometryHint.ClientWidth > 0 && geometryHint.ClientWidth != client.width) {
+            return ""
+        }
+
+        if (geometryHint.HasOwnProp("ClientHeight") && geometryHint.ClientHeight != "" && geometryHint.ClientHeight > 0 && geometryHint.ClientHeight != client.height) {
+            return ""
+        }
+
+        return geometryHint
+    }
+
+    static ResolveCaptureHeight(clientAvailableHeight, profile, geometryHint := "") {
+        defaultHeight := Min(clientAvailableHeight, Max(profile.BandHeight, BC_Config.SearchCaptureHeight))
+
+        if !IsObject(geometryHint) || !geometryHint.HasOwnProp("Pitch") || (geometryHint.Pitch <= 0) {
+            return defaultHeight
+        }
+
+        scale := geometryHint.Pitch / profile.Pitch
+        bandHeight := Ceil(profile.BandHeight * scale)
+        originY := geometryHint.HasOwnProp("OriginY") ? Max(0, Integer(geometryHint.OriginY)) : 0
+        padding := Max(0, BC_Config.LockedCapturePaddingPixels)
+        lockedHeight := Max(BC_Config.LockedCaptureMinHeight, originY + bandHeight + padding)
+        return Min(clientAvailableHeight, lockedHeight)
     }
 
     static FindRiftWindow() {
@@ -385,7 +421,7 @@ class BC_Capture {
     static ExtractBitmapPixels(hdc, hBitmap, width, height, failureMessage) {
         paddedStride := ((width * 3) + 3) & ~3
         dibPixels := Buffer(paddedStride * height, 0)
-        tightPixels := Buffer(width * height * 3, 0)
+        rowStride := width * 3
         bitmapInfo := Buffer(40, 0)
         NumPut("UInt", 40, bitmapInfo, 0)
         NumPut("Int", width, bitmapInfo, 4)
@@ -410,16 +446,20 @@ class BC_Capture {
             throw Error(failureMessage)
         }
 
+        if (paddedStride = rowStride) {
+            return {
+                Width: width,
+                Height: height,
+                Pixels: dibPixels
+            }
+        }
+
+        tightPixels := Buffer(rowStride * height, 0)
         row := 0
         while (row < height) {
             sourceOffset := row * paddedStride
-            destOffset := row * width * 3
-            columnOffset := 0
-            while (columnOffset < (width * 3)) {
-                value := NumGet(dibPixels, sourceOffset + columnOffset, "UChar")
-                NumPut("UChar", value, tightPixels, destOffset + columnOffset)
-                columnOffset += 1
-            }
+            destOffset := row * rowStride
+            DllCall("RtlMoveMemory", "Ptr", tightPixels.Ptr + destOffset, "Ptr", dibPixels.Ptr + sourceOffset, "UPtr", rowStride)
             row += 1
         }
 
@@ -465,18 +505,15 @@ class BC_Capture {
     }
 
     static CropRect(image, cropX, cropY, cropWidth, cropHeight) {
-        pixelBuffer := Buffer(cropWidth * cropHeight * 3, 0)
+        rowStride := cropWidth * 3
+        sourceRowStride := image.Width * 3
+        pixelBuffer := Buffer(rowStride * cropHeight, 0)
         row := 0
 
         while (row < cropHeight) {
-            sourceOffset := ((cropY + row) * image.Width * 3) + (cropX * 3)
-            destOffset := row * cropWidth * 3
-            columnOffset := 0
-            while (columnOffset < cropWidth * 3) {
-                value := NumGet(image.Pixels, sourceOffset + columnOffset, "UChar")
-                NumPut("UChar", value, pixelBuffer, destOffset + columnOffset)
-                columnOffset += 1
-            }
+            sourceOffset := ((cropY + row) * sourceRowStride) + (cropX * 3)
+            destOffset := row * rowStride
+            DllCall("RtlMoveMemory", "Ptr", pixelBuffer.Ptr + destOffset, "Ptr", image.Pixels.Ptr + sourceOffset, "UPtr", rowStride)
             row += 1
         }
 

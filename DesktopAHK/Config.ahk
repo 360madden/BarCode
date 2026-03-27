@@ -42,6 +42,8 @@ class BC_Config {
     static SearchCoarseXStep := 2
     static SearchCoarseYStep := 1
     static SearchCaptureHeight := 160
+    static LockedCapturePaddingPixels := 8
+    static LockedCaptureMinHeight := 64
     static DataRoot := BC_ConfigResolveDataRoot()
     static ReportDir := BC_Config.DataRoot "\out"
     static FixtureDir := BC_Config.DataRoot "\fixtures"
@@ -57,6 +59,7 @@ class BC_Config {
     static LatestRunPath := BC_Config.ReportDir "\latest-run.txt"
     static LiveStateJsonPath := BC_Config.StateDir "\latest-state.json"
     static LiveStateTextPath := BC_Config.StateDir "\latest-state.txt"
+    static LockedGeometryPath := BC_Config.StateDir "\locked-geometry.txt"
     static LiveHistoryJsonPath := BC_Config.StateDir "\recent-history.json"
     static LiveHistoryJsonlPath := BC_Config.StateDir "\recent-history.jsonl"
 

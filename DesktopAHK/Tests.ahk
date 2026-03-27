@@ -197,8 +197,12 @@ class BC_Tests {
         lastResult := ""
         totalCaptureMs := 0
         totalPipelineMs := 0
+        lockedPipelineMs := 0
+        searchedPipelineMs := 0
         lockedCount := 0
         searchedCount := 0
+        firstSampleCaptureMs := ""
+        firstSamplePipelineMs := ""
         sampleIndex := 1
         title := WinGetTitle("ahk_id " hwnd)
         processName := WinGetProcessName("ahk_id " hwnd)
@@ -211,6 +215,10 @@ class BC_Tests {
             validation := result.Validation
             totalCaptureMs += result.Timings.CaptureMs
             totalPipelineMs += result.Timings.PipelineMs
+            if (sampleIndex = 1) {
+                firstSampleCaptureMs := result.Timings.CaptureMs
+                firstSamplePipelineMs := result.Timings.PipelineMs
+            }
             if (validation.IsAccepted) {
                 acceptedCount += 1
                 if (firstAcceptedSequence = "" && validation.Details.HasOwnProp("Transport")) {
@@ -222,8 +230,10 @@ class BC_Tests {
 
             lastResult := result
             if (result.Detection.SearchMode = "locked") {
+                lockedPipelineMs += result.Timings.PipelineMs
                 lockedCount += 1
             } else {
+                searchedPipelineMs += result.Timings.PipelineMs
                 searchedCount += 1
             }
             if (sampleIndex < sampleCount && sleepMs > 0) {
@@ -259,6 +269,10 @@ class BC_Tests {
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / sampleCount, 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / sampleCount, 2))
+        reportLines.Push("FirstSampleCaptureMs: " firstSampleCaptureMs)
+        reportLines.Push("FirstSamplePipelineMs: " firstSamplePipelineMs)
+        reportLines.Push("AverageLockedPipelineMs: " (lockedCount ? Round(lockedPipelineMs / lockedCount, 2) : 0))
+        reportLines.Push("AverageSearchedPipelineMs: " (searchedCount ? Round(searchedPipelineMs / searchedCount, 2) : 0))
         reportLines.Push("FirstAcceptedSequence: " firstAcceptedSequence)
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
@@ -313,6 +327,8 @@ class BC_Tests {
         lastResult := ""
         totalCaptureMs := 0
         totalPipelineMs := 0
+        lockedPipelineMs := 0
+        searchedPipelineMs := 0
         lockedCount := 0
         searchedCount := 0
 
@@ -331,8 +347,10 @@ class BC_Tests {
             }
 
             if (result.Detection.SearchMode = "locked") {
+                lockedPipelineMs += result.Timings.PipelineMs
                 lockedCount += 1
             } else {
+                searchedPipelineMs += result.Timings.PipelineMs
                 searchedCount += 1
             }
 
@@ -367,6 +385,8 @@ class BC_Tests {
         reportLines.Push("CaptureAttempts: " (lastResult.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(lastResult.CaptureAttempts, ",") : ""))
         reportLines.Push("AverageCaptureMs: " Round(totalCaptureMs / Max(1, sampleCount), 2))
         reportLines.Push("AveragePipelineMs: " Round(totalPipelineMs / Max(1, sampleCount), 2))
+        reportLines.Push("AverageLockedPipelineMs: " (lockedCount ? Round(lockedPipelineMs / lockedCount, 2) : 0))
+        reportLines.Push("AverageSearchedPipelineMs: " (searchedCount ? Round(searchedPipelineMs / searchedCount, 2) : 0))
         reportLines.Push("LastAccepted: " BC_Tests.BoolText(validation.IsAccepted))
         reportLines.Push("LastReason: " validation.Reason)
         reportLines.Push("LastConfidence: " validation.Confidence)
@@ -397,26 +417,27 @@ class BC_Tests {
         totalCaptureMs := 0
         totalPipelineMs := 0
         attemptSources := []
+        geometryHint := BC_State.GetLockedGeometryForClient(BC_Capture.GetClientRectOnScreen(hwnd))
 
         captureStarted := A_TickCount
-        primaryImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY)
+        primaryImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, "auto", geometryHint)
         totalCaptureMs += A_TickCount - captureStarted
         attemptSources.Push(primaryImage.SourceKind)
 
         pipelineStarted := A_TickCount
-        bestResult := BC_Tests.TryDecodeImage(primaryImage)
+        bestResult := BC_Tests.TryDecodeImage(primaryImage, geometryHint)
         totalPipelineMs += A_TickCount - pipelineStarted
 
         if !bestResult.Validation.IsAccepted {
             fallbackSource := primaryImage.SourceKind = "printwindow-client" ? "screen" : "printwindow"
             BC_Debug.Trace("tests.live:fallback=" fallbackSource "`r`n")
             captureStarted := A_TickCount
-            fallbackImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, fallbackSource)
+            fallbackImage := BC_Capture.AcquireFromWindow(hwnd, cropX, cropY, fallbackSource, geometryHint)
             totalCaptureMs += A_TickCount - captureStarted
             attemptSources.Push(fallbackImage.SourceKind)
 
             pipelineStarted := A_TickCount
-            fallbackResult := BC_Tests.TryDecodeImage(fallbackImage)
+            fallbackResult := BC_Tests.TryDecodeImage(fallbackImage, geometryHint)
             totalPipelineMs += A_TickCount - pipelineStarted
 
             if (BC_Tests.IsPreferredLiveResult(fallbackResult, bestResult)) {
@@ -433,12 +454,12 @@ class BC_Tests {
         return bestResult
     }
 
-    static DecodeImage(image) {
+    static DecodeImage(image, geometryHint := "") {
         profile := BC_Protocol.GetProfile()
-        detection := BC_Detect.LocateBand(image, profile, BC_State.GetLockedGeometry())
+        detection := BC_Detect.LocateBand(image, profile, IsObject(geometryHint) ? geometryHint : BC_State.GetLockedGeometryForImage(image))
         decodeResult := BC_Decode.Decode(image, detection)
         validation := BC_Validate.Validate(detection, decodeResult)
-        BC_State.Update(validation)
+        BC_State.Update(validation, { Image: image })
 
         return {
             Image: image,
@@ -448,11 +469,11 @@ class BC_Tests {
         }
     }
 
-    static TryDecodeImage(image) {
+    static TryDecodeImage(image, geometryHint := "") {
         profile := BC_Protocol.GetProfile()
 
         try {
-            return BC_Tests.DecodeImage(image)
+            return BC_Tests.DecodeImage(image, geometryHint)
         } catch as err {
             details := {
                 BorderErrors: 999,
@@ -472,7 +493,7 @@ class BC_Tests {
             detection := BC_Interfaces.DetectionResult(profile, 0, 0, 0, 999, err.Message, 0, 0, 0, image.Width, image.Height, 0, "decode-exception")
             decodeResult := BC_Interfaces.DecodeResult([], 0, 0, 0)
             validation := BC_Interfaces.ValidationResult(false, err.Message, 0.0, details)
-            BC_State.Update(validation)
+            BC_State.Update(validation, { Image: image })
 
             return {
                 Image: image,

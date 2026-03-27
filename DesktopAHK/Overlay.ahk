@@ -14,6 +14,7 @@ class BC_Overlay {
         WindowBack: "10151B",
         Header: "89DDFF",
         StatusOk: "C3E88D",
+        StatusWarn: "FFCB6B",
         StatusBad: "F07178",
         Mode: "C792EA",
         SectionPlayer: "82AAFF",
@@ -256,7 +257,10 @@ class BC_Overlay {
         seq := BC_Overlay.SafeText(snapshot.sequence, "-")
         confidence := BC_Overlay.SafeText(snapshot.confidence, "-")
         reason := BC_Overlay.SafeText(snapshot.reason, "-")
-        return verdict " | seq=" seq " | conf=" confidence " | " reason
+        freshness := BC_Overlay.FreshnessLabel(snapshot)
+        searchMode := BC_Overlay.SafeText(snapshot.searchMode, "-")
+        pipelineMs := BC_Overlay.SafeText(snapshot.pipelineMs, "-")
+        return verdict " | " freshness " | " searchMode " | seq=" seq " | ms=" pipelineMs " | conf=" confidence " | " reason
     }
 
     static ResetLiveUiHistory() {
@@ -328,10 +332,23 @@ class BC_Overlay {
         return BC_Overlay.SafeText(current, "0") "/" BC_Overlay.SafeText(maximum, "0")
     }
 
+    static FreshnessLabel(snapshot) {
+        if !snapshot.accepted {
+            return "bad"
+        }
+
+        if (snapshot.sequenceChanged = "") {
+            return "unknown"
+        }
+
+        return snapshot.freshFrame ? "fresh" : "repeat"
+    }
+
     static FormatTransportText(snapshot) {
         lines := []
         lines.Push("Sequence: " BC_Overlay.SafeText(snapshot.sequence, "-"))
         lines.Push("Page / Payload: " BC_Overlay.SafeText(snapshot.pageId, "-") " / " BC_Overlay.SafeText(snapshot.payloadUsedLength, "-"))
+        lines.Push("Frame / Advance: " BC_Overlay.FreshnessLabel(snapshot) " / " BC_Overlay.SafeText(snapshot.sequenceAdvance, "-"))
         lines.Push("Confidence: " BC_Overlay.SafeText(snapshot.confidence, "-"))
         lines.Push("Reason: " BC_Overlay.SafeText(snapshot.reason, "-"))
         lines.Push("Search: " BC_Overlay.SafeText(snapshot.searchMode, "-"))
@@ -357,6 +374,8 @@ class BC_Overlay {
             " | rejected " BC_Overlay.SafeText(snapshot.sessionRejectedCount, "0")
             " | streak " BC_Overlay.SafeText(snapshot.acceptedStreak, "0")
             "/" BC_Overlay.SafeText(snapshot.rejectedStreak, "0")
+            " | repeats " BC_Overlay.SafeText(snapshot.sequenceRepeatedCount, "0")
+            " | wraps " BC_Overlay.SafeText(snapshot.sequenceWrapCount, "0")
         )
     }
 
@@ -397,7 +416,11 @@ class BC_Overlay {
         window := BC_Overlay.EnsureWindow(title)
         controls := BC_Overlay.Controls
         acceptedText := snapshot.accepted ? "ACCEPTED" : "REJECTED"
-        statusColor := snapshot.accepted ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusBad
+        freshnessText := snapshot.accepted ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
+        searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
+        statusColor := snapshot.accepted
+            ? (snapshot.freshFrame ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusWarn)
+            : BC_Overlay.Palette.StatusBad
         sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
         confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
         reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
@@ -410,7 +433,7 @@ class BC_Overlay {
             controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
         } catch {
         }
-        controls.Status.Text := "Status: " acceptedText reasonText sequenceText confidenceText
+        controls.Status.Text := "Status: " acceptedText freshnessText searchText reasonText sequenceText confidenceText
         controls.PlayerHealthLabel.Text := "Health: " BC_Overlay.PairText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
         controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
         controls.PlayerResourceLabel.Text := "Resource: " BC_Overlay.PairText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_Overlay.SafeText(snapshot.playerResourceKindName, "none") ")"
@@ -430,7 +453,7 @@ class BC_Overlay {
         controls.SessionText.Text := BC_Overlay.FormatSessionText(snapshot)
         controls.DetailsBody.Value := BC_State.BuildSnapshotText(snapshot)
         controls.HistoryBody.Value := BC_Overlay.RenderLiveUiHistory()
-        controls.Footer.Text := "State file: " BC_Config.LiveStateTextPath
+        controls.Footer.Text := "State: " BC_Config.LiveStateTextPath " | Lock: " BC_Config.LockedGeometryPath
 
         window.Show()
         return window
@@ -503,6 +526,28 @@ class BC_Overlay {
         return (*) => BC_Overlay.PollLiveProvider(liveState)
     }
 
+    static CommitLiveUiResult(result) {
+        if !IsObject(result) || !result.HasOwnProp("Validation") {
+            throw Error("Live UI provider returned an invalid result.")
+        }
+
+        context := {
+            Image: result.HasOwnProp("Image") ? result.Image : {},
+            Timings: result.HasOwnProp("Timings") ? result.Timings : {},
+            SampleIndex: BC_Overlay.LiveUiTickCount,
+            CaptureAttempts: result.HasOwnProp("CaptureAttempts") ? result.CaptureAttempts : []
+        }
+
+        if result.HasOwnProp("WindowTitle") {
+            context.WindowTitle := result.WindowTitle
+        }
+        if result.HasOwnProp("ProcessName") {
+            context.ProcessName := result.ProcessName
+        }
+
+        BC_State.Update(result.Validation, context, true)
+    }
+
     static LiveUiTick() {
         if !IsObject(BC_Overlay.Window) {
             BC_Overlay.StopLiveUiTimers()
@@ -515,13 +560,13 @@ class BC_Overlay {
             }
 
             BC_Overlay.LiveUiTickCount += 1
-            BC_Overlay.LiveUiProvider.Call()
-            BC_State.WriteSnapshot()
+            result := BC_Overlay.LiveUiProvider.Call()
+            BC_Overlay.CommitLiveUiResult(result)
             snapshot := BC_State.BuildSnapshot()
             BC_Overlay.LiveUiLastSnapshot := snapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
             BC_Overlay.UpdateFromSnapshot(snapshot, BC_Overlay.CurrentTitle)
-            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms"
+            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
             BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode liveui error`r`n" err.Message "`r`n" err.Stack)
@@ -553,6 +598,7 @@ class BC_Overlay {
     static StartLiveUi(source := "synthetic", path := "", cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
+        BC_State.ResetLiveOutputs()
         BC_Overlay.LiveUiMode := StrLower(source)
         BC_Overlay.LiveUiSourceLabel := BC_Overlay.LiveUiMode
         BC_Overlay.LiveUiIntervalMs := Max(25, Integer(intervalMs))

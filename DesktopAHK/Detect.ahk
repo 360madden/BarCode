@@ -12,7 +12,10 @@ character count note: Character count not precomputed; measure with tooling if n
 class BC_Detect {
     static LocateBand(image, profile, geometryHint := 0) {
         if (image.Width = profile.BandWidth && image.Height = profile.BandHeight) {
-            return BC_Detect.BuildDetectionResult(BC_Detect.EvaluateCandidate(image, profile, 0, 0, profile.Pitch, 1, 1, "exact"), profile)
+            exactCandidate := BC_Detect.EvaluateCandidate(image, profile, 0, 0, profile.Pitch, 1, 1, "exact")
+            if IsObject(exactCandidate) {
+                return BC_Detect.BuildDetectionResult(exactCandidate, profile)
+            }
         }
 
         if IsObject(geometryHint) {
@@ -36,6 +39,11 @@ class BC_Detect {
             return ""
         }
 
+        fastCandidate := BC_Detect.SearchSeedNeighborhood(image, profile, seed)
+        if IsObject(fastCandidate) {
+            return fastCandidate
+        }
+
         bestCandidate := ""
         pitch := seed.PitchStart
         while (pitch <= (seed.PitchEnd + 0.0001)) {
@@ -52,6 +60,39 @@ class BC_Detect {
                 originY += 1
             }
             pitch := Round(pitch + 0.10, 4)
+        }
+
+        if !IsObject(bestCandidate) {
+            return ""
+        }
+
+        return BC_Detect.RefineCandidate(image, profile, bestCandidate)
+    }
+
+    static SearchSeedNeighborhood(image, profile, seed) {
+        bestCandidate := ""
+        pitchStart := Max(BC_Config.SearchMinPitch, seed.Pitch - 0.20)
+        pitchEnd := Min(BC_Config.SearchMaxPitch, seed.Pitch + 0.20)
+        originXStart := Max(0, seed.OriginX - 1)
+        originXEnd := Min(BC_Config.SearchMaxOriginX, seed.OriginX + 2)
+        originYStart := Max(0, seed.OriginY - 1)
+        originYEnd := Min(BC_Config.SearchMaxOriginY, seed.OriginY + 2)
+        pitch := pitchStart
+
+        while (pitch <= (pitchEnd + 0.0001)) {
+            originY := originYStart
+            while (originY <= originYEnd) {
+                originX := originXStart
+                while (originX <= originXEnd) {
+                    candidate := BC_Detect.EvaluateCandidate(image, profile, originX, originY, pitch, 1, 1, "scaled-fast")
+                    if (IsObject(candidate) && BC_Detect.IsBetterCandidate(candidate, bestCandidate)) {
+                        bestCandidate := candidate
+                    }
+                    originX += 1
+                }
+                originY += 1
+            }
+            pitch := Round(pitch + BC_Config.SearchFinePitchStep, 4)
         }
 
         if !IsObject(bestCandidate) {
@@ -91,6 +132,13 @@ class BC_Detect {
     }
 
     static EstimatePanelSeed(image, profile) {
+        if BC_Detect.IsTopAnchoredSource(image) {
+            fastSeed := BC_Detect.EstimateTopAnchoredSeed(image, profile)
+            if IsObject(fastSeed) {
+                return fastSeed
+            }
+        }
+
         bestSpan := ""
         maxRow := Min(BC_Config.SearchMaxOriginY, image.Height - 1)
         rowIndex := 0
@@ -110,12 +158,34 @@ class BC_Detect {
             return ""
         }
 
-        estimatedPitch := (bestSpan.Width / profile.BandWidth) * profile.Pitch
+        return BC_Detect.BuildSeed(bestSpan, bestSpan.Row, profile)
+    }
+
+    static EstimateTopAnchoredSeed(image, profile) {
+        maxRow := Min(12, BC_Config.SearchMaxOriginY, image.Height - 1)
+        rowIndex := 0
+
+        while (rowIndex <= maxRow) {
+            span := BC_Detect.MeasureBrightSpan(image, rowIndex, 215)
+            if (IsObject(span) && span.Width >= 200) {
+                return BC_Detect.BuildSeed(span, rowIndex, profile)
+            }
+            rowIndex += 1
+        }
+
+        return ""
+    }
+
+    static BuildSeed(span, rowIndex, profile) {
+        estimatedPitch := (span.Width / profile.BandWidth) * profile.Pitch
         estimatedPitch := Max(BC_Config.SearchMinPitch, Min(BC_Config.SearchMaxPitch, estimatedPitch))
-        estimatedOriginX := Max(0, bestSpan.StartX)
-        estimatedOriginY := Max(0, bestSpan.Row)
+        estimatedOriginX := Max(0, span.StartX)
+        estimatedOriginY := Max(0, rowIndex)
 
         return {
+            OriginX: estimatedOriginX,
+            OriginY: estimatedOriginY,
+            Pitch: estimatedPitch,
             OriginXStart: Max(0, estimatedOriginX - 4),
             OriginXEnd: Min(BC_Config.SearchMaxOriginX, estimatedOriginX + 4),
             OriginYStart: Max(0, estimatedOriginY - 2),
@@ -123,6 +193,14 @@ class BC_Detect {
             PitchStart: Max(BC_Config.SearchMinPitch, estimatedPitch - 0.60),
             PitchEnd: Min(BC_Config.SearchMaxPitch, estimatedPitch + 0.60)
         }
+    }
+
+    static IsTopAnchoredSource(image) {
+        if !IsObject(image) || !image.HasOwnProp("SourceKind") {
+            return false
+        }
+
+        return image.SourceKind = "screen-bitblt" || image.SourceKind = "printwindow-client"
     }
 
     static MeasureBrightSpan(image, y, threshold := 215) {
