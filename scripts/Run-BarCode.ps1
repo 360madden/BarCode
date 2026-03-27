@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.7
+version: 0.3.9
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -54,6 +54,84 @@ function Get-LatestRunReportPath {
     return $null
 }
 
+function Get-LatestRunLines {
+    if (-not (Test-Path -LiteralPath $latestRunPath)) {
+        return @()
+    }
+
+    return @(Get-Content -LiteralPath $latestRunPath -ErrorAction SilentlyContinue)
+}
+
+function Get-LatestRunReportPathFromLines {
+    param([string[]]$Lines)
+
+    foreach ($line in $Lines) {
+        if ($line -like 'Report=*') {
+            return $line.Substring(7)
+        }
+    }
+
+    return $null
+}
+
+function Wait-ForFreshFile {
+    param(
+        [string]$LiteralPath,
+        [datetime]$NotOlderThan,
+        [int]$TimeoutMs = 1500
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LiteralPath)) {
+        return $false
+    }
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    $minimumWriteTime = $NotOlderThan.AddMilliseconds(-250)
+
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $LiteralPath) {
+            $item = Get-Item -LiteralPath $LiteralPath -ErrorAction SilentlyContinue
+            if ($null -ne $item -and $item.LastWriteTime -ge $minimumWriteTime) {
+                return $true
+            }
+        }
+
+        Start-Sleep -Milliseconds 50
+    }
+
+    return (Test-Path -LiteralPath $LiteralPath)
+}
+
+function Wait-ForLatestRunCompletion {
+    param(
+        [datetime]$NotOlderThan,
+        [int]$TimeoutMs = 2000
+    )
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    $minimumWriteTime = $NotOlderThan.AddMilliseconds(-250)
+
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $latestRunPath) {
+            $item = Get-Item -LiteralPath $latestRunPath -ErrorAction SilentlyContinue
+            $lines = Get-LatestRunLines
+            $firstLine = ''
+            if ($lines.Count -gt 0) {
+                $firstLine = $lines[0]
+            }
+            $isComplete = $firstLine -like 'BarCode DesktopAHK run complete*' -or $firstLine -like 'BarCode DesktopAHK run failed*'
+            if ($null -ne $item -and $item.LastWriteTime -ge $minimumWriteTime -and $isComplete) {
+                return $lines
+            }
+        }
+
+        Start-Sleep -Milliseconds 50
+    }
+
+    return Get-LatestRunLines
+}
+
+$runStartTime = Get-Date
 $arguments = @('/ErrorStdOut=UTF-8', $mainScript, $Mode) + $ModeArgs
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $exe
@@ -84,10 +162,18 @@ if ($stderr) {
     Write-Output $stderr
 }
 
-$reportPath = Get-LatestRunReportPath
+$latestRun = Wait-ForLatestRunCompletion -NotOlderThan $runStartTime
+$reportPath = Get-LatestRunReportPathFromLines -Lines $latestRun
+if ($reportPath) {
+    $null = Wait-ForFreshFile -LiteralPath $reportPath -NotOlderThan $runStartTime -TimeoutMs 1500
+}
+if ($Mode -ne 'summary') {
+    $null = Wait-ForFreshFile -LiteralPath $latestSummaryPath -NotOlderThan $runStartTime -TimeoutMs 1500
+}
+
 if ($reportPath) {
     Write-Output '--- LATEST RUN ---'
-    Get-Content -LiteralPath $latestRunPath -ErrorAction SilentlyContinue
+    $latestRun
     if ((-not $stdout) -and (Test-Path -LiteralPath $reportPath)) {
         Write-Output '--- REPORT ---'
         Get-Content -LiteralPath $reportPath -ErrorAction SilentlyContinue
