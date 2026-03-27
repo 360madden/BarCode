@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.12
+version: 0.3.13
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -22,6 +22,12 @@ $mainScript = Join-Path $repoRoot 'DesktopAHK\Main.ahk'
 $exe = 'C:\Users\mrkoo\AppData\Local\Programs\AutoHotkey\v2\AutoHotkey64.exe'
 $latestRunPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\latest-run.txt'
 $latestSummaryPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-summary.txt'
+$latestSummaryJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-summary.json'
+$latestStateTextPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.txt'
+$latestStateJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.json'
+$latestHistoryJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.json'
+$latestHistoryJsonlPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.jsonl'
+$archiveRoot = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\archive'
 
 function Format-ProcessArgument {
     param([string]$Value)
@@ -131,6 +137,51 @@ function Wait-ForLatestRunCompletion {
     return Get-LatestRunLines
 }
 
+function Copy-ArtifactIfPresent {
+    param(
+        [string]$SourcePath,
+        [string]$DestinationDirectory
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $SourcePath)) {
+        return
+    }
+
+    $leaf = Split-Path -Leaf $SourcePath
+    Copy-Item -LiteralPath $SourcePath -Destination (Join-Path $DestinationDirectory $leaf) -Force
+}
+
+function New-RunArchive {
+    param(
+        [datetime]$StartedAt,
+        [string]$ModeName,
+        [string]$ReportPath
+    )
+
+    if ($ModeName -in @('help', '--help', '-h', 'summary')) {
+        return $null
+    }
+
+    $stamp = $StartedAt.ToString('yyyyMMdd-HHmmss')
+    $archiveDir = Join-Path $archiveRoot ($stamp + '-' + $ModeName)
+    New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
+
+    Copy-ArtifactIfPresent -SourcePath $latestRunPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $ReportPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestSummaryPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestSummaryJsonPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestStateTextPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestStateJsonPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonPath -DestinationDirectory $archiveDir
+    Copy-ArtifactIfPresent -SourcePath $latestHistoryJsonlPath -DestinationDirectory $archiveDir
+
+    return $archiveDir
+}
+
 $runStartTime = Get-Date
 $arguments = @('/ErrorStdOut=UTF-8', $mainScript, $Mode) + $ModeArgs
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -183,6 +234,11 @@ if ($reportPath) {
 if (($Mode -ne 'summary') -and (Test-Path -LiteralPath $latestSummaryPath)) {
     Write-Output '--- SUMMARY ---'
     Get-Content -LiteralPath $latestSummaryPath -ErrorAction SilentlyContinue
+}
+
+$archiveDir = New-RunArchive -StartedAt $runStartTime -ModeName $Mode -ReportPath $reportPath
+if ($archiveDir) {
+    Write-Output ('ArchiveDir=' + $archiveDir)
 }
 
 exit $process.ExitCode
