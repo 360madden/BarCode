@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.20
+version: 0.3.21
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -573,6 +573,68 @@ class BC_Overlay {
             : BC_Overlay.Palette.StatusBad
     }
 
+    static CompareColor(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return BC_Overlay.Palette.MutedText
+        }
+
+        hpDelta := BC_State.PercentDeltaText(
+            snapshot.playerHealthCurrent,
+            snapshot.playerHealthMax,
+            snapshot.targetHealthCurrent,
+            snapshot.targetHealthMax
+        )
+        if (hpDelta = "") {
+            return BC_Overlay.Palette.Header
+        }
+
+        return Integer(hpDelta) >= 0 ? BC_Overlay.Palette.StatusOk : BC_Overlay.Palette.StatusBad
+    }
+
+    static SessionColor(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.Palette.StatusWarn
+        }
+        if !snapshot.accepted {
+            return BC_Overlay.Palette.StatusBad
+        }
+        return snapshot.freshFrame ? BC_Overlay.Palette.HistoryText : BC_Overlay.Palette.StatusWarn
+    }
+
+    static CaptureColor(snapshot) {
+        if BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.Palette.StatusWarn
+        }
+        if !snapshot.accepted {
+            return BC_Overlay.Palette.StatusBad
+        }
+        if (snapshot.attemptCount != "" && Integer(snapshot.attemptCount) > 1) {
+            return BC_Overlay.Palette.StatusWarn
+        }
+        return BC_Overlay.Palette.CaptureText
+    }
+
+    static PlayerStatusColor(snapshot) {
+        if !snapshot.accepted && !BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.Palette.StatusBad
+        }
+        return BC_State.HasBit(snapshot.stateFlags, 0x0002)
+            ? BC_Overlay.Palette.StatusOk
+            : BC_Overlay.Palette.SectionPlayer
+    }
+
+    static TargetStatusColor(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return BC_Overlay.Palette.MutedText
+        }
+        if !snapshot.accepted && !BC_Overlay.IsHeldFrame(snapshot) {
+            return BC_Overlay.Palette.StatusBad
+        }
+        return BC_State.HasBit(snapshot.stateFlags, 0x0040)
+            ? BC_Overlay.Palette.SectionTarget
+            : BC_Overlay.Palette.StatusWarn
+    }
+
     static FreshnessLabel(snapshot) {
         if BC_Overlay.IsHeldFrame(snapshot) {
             return "held"
@@ -753,6 +815,9 @@ class BC_Overlay {
         try {
             controls.Status.SetFont("c" statusColor, "Consolas")
             controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
+            controls.TransportText.SetFont("c" BC_Overlay.Palette.Header, "Consolas")
+            controls.CaptureText.SetFont("c" BC_Overlay.CaptureColor(snapshot), "Consolas")
+            controls.SessionText.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
         } catch {
         }
         controls.Status.Text := "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText
@@ -802,6 +867,13 @@ class BC_Overlay {
         try {
             controls.Status.SetFont("c" statusColor, "Consolas")
             controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
+            controls.CompareText.SetFont("c" BC_Overlay.CompareColor(snapshot), "Consolas")
+            controls.PlayerStatus.SetFont("c" BC_Overlay.PlayerStatusColor(snapshot), "Consolas")
+            controls.TargetStatus.SetFont("c" BC_Overlay.TargetStatusColor(snapshot), "Consolas")
+            controls.TransportText.SetFont("c" BC_Overlay.Palette.Header, "Consolas")
+            controls.CaptureText.SetFont("c" BC_Overlay.CaptureColor(snapshot), "Consolas")
+            controls.SessionText.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
+            controls.Footer.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
         } catch {
         }
 
