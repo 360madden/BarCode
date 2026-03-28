@@ -217,7 +217,7 @@ try {
     } else if (mode = "liveui") {
         source := A_Args.Length >= 2 ? StrLower(A_Args[2]) : "synthetic"
         if (source = "synthetic") {
-            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             if (intervalMs < 25) {
                 throw Error("liveui synthetic interval must be at least 25ms")
@@ -232,7 +232,7 @@ try {
             }
             cropX := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             cropY := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
-            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : 250
+            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 7 ? Integer(A_Args[7]) : 0
             if (intervalMs < 25) {
                 throw Error("liveui bmp interval must be at least 25ms")
@@ -242,7 +242,7 @@ try {
             }
             result := BC_Overlay.RunLiveUiBmp(A_Args[3], cropX, cropY, intervalMs, autoCloseMs)
         } else if (source = "live") {
-            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             if (intervalMs < 25) {
                 throw Error("liveui live interval must be at least 25ms")
@@ -257,7 +257,7 @@ try {
     } else if (mode = "livehud") {
         source := A_Args.Length >= 2 ? StrLower(A_Args[2]) : "synthetic"
         if (source = "synthetic") {
-            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             if (intervalMs < 25) {
                 throw Error("livehud synthetic interval must be at least 25ms")
@@ -272,7 +272,7 @@ try {
             }
             cropX := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             cropY := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
-            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : 250
+            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 7 ? Integer(A_Args[7]) : 0
             if (intervalMs < 25) {
                 throw Error("livehud bmp interval must be at least 25ms")
@@ -282,7 +282,7 @@ try {
             }
             result := BC_Overlay.RunLiveHudBmp(A_Args[3], cropX, cropY, intervalMs, autoCloseMs)
         } else if (source = "live") {
-            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : 250
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
             autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
             if (intervalMs < 25) {
                 throw Error("livehud live interval must be at least 25ms")

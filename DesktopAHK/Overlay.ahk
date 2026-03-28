@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.22
+version: 0.3.23
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -40,12 +40,15 @@ class BC_Overlay {
     static LiveUiProvider := ""
     static LiveUiRefreshCallback := ""
     static LiveUiAutoCloseCallback := ""
-    static LiveUiIntervalMs := 250
+    static LiveUiIntervalMs := 125
+    static LiveUiRenderIntervalMs := 250
     static LiveUiAutoCloseMs := 0
     static LiveUiTickCount := 0
     static LiveUiStartTick := 0
     static LiveUiLastSnapshot := ""
     static LiveUiLastAcceptedSnapshot := ""
+    static LiveUiLastRenderedSnapshot := ""
+    static LiveUiLastRenderTick := 0
     static LiveUiHistory := []
     static LiveUiHistoryLimit := 8
     static WindowShown := false
@@ -428,10 +431,13 @@ class BC_Overlay {
         BC_Overlay.LiveUiMode := "synthetic"
         BC_Overlay.LiveUiSourceLabel := "synthetic"
         BC_Overlay.LiveUiProvider := ""
-        BC_Overlay.LiveUiIntervalMs := 250
+        BC_Overlay.LiveUiIntervalMs := BC_Config.LiveSurfaceDefaultSampleMs
+        BC_Overlay.LiveUiRenderIntervalMs := BC_Config.LiveSurfaceDefaultRenderMs
         BC_Overlay.LiveUiAutoCloseMs := 0
         BC_Overlay.LiveUiTickCount := 0
         BC_Overlay.LiveUiStartTick := 0
+        BC_Overlay.LiveUiLastRenderTick := 0
+        BC_Overlay.LiveUiLastRenderedSnapshot := ""
         BC_Overlay.WindowNoActivate := false
         BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.ResetLiveUiHistory()
@@ -490,6 +496,48 @@ class BC_Overlay {
         BC_Overlay.WindowShown := true
     }
 
+    static CloneSnapshot(snapshot) {
+        copy := {}
+        for key, value in snapshot.OwnProps() {
+            copy.%key% := value
+        }
+        return copy
+    }
+
+    static ShouldRenderLiveSnapshot(snapshot) {
+        now := A_TickCount
+
+        if !BC_Overlay.WindowShown {
+            return true
+        }
+
+        if !IsObject(BC_Overlay.LiveUiLastRenderedSnapshot) {
+            return true
+        }
+
+        previous := BC_Overlay.LiveUiLastRenderedSnapshot
+        if (snapshot.accepted != previous.accepted) {
+            return true
+        }
+        if (BC_Overlay.IsHeldFrame(snapshot) != BC_Overlay.IsHeldFrame(previous)) {
+            return true
+        }
+        if (BC_Overlay.SafeText(snapshot.reason, "-") != BC_Overlay.SafeText(previous.reason, "-")) {
+            return true
+        }
+        if (BC_Overlay.SafeText(snapshot.searchMode, "-") != BC_Overlay.SafeText(previous.searchMode, "-")) {
+            return true
+        }
+        if (BC_Overlay.SafeText(snapshot.captureSource, "-") != BC_Overlay.SafeText(previous.captureSource, "-")) {
+            return true
+        }
+        if (BC_Overlay.SafeText(snapshot.captureRouteReason, "-") != BC_Overlay.SafeText(previous.captureRouteReason, "-")) {
+            return true
+        }
+
+        return (now - BC_Overlay.LiveUiLastRenderTick) >= BC_Overlay.LiveUiRenderIntervalMs
+    }
+
     static HasLiveUiProvider() {
         try {
             return BC_Overlay.LiveUiProvider != "" && HasMethod(BC_Overlay.LiveUiProvider, "Call")
@@ -500,6 +548,8 @@ class BC_Overlay {
 
     static OnRefreshClicked(*) {
         if BC_Overlay.HasLiveUiProvider() {
+            BC_Overlay.LiveUiLastRenderTick := 0
+            BC_Overlay.LiveUiLastRenderedSnapshot := ""
             BC_Overlay.LiveUiTick()
             return
         }
@@ -604,14 +654,6 @@ class BC_Overlay {
 
     static PairText(current, maximum) {
         return BC_Overlay.SafeText(current, "0") "/" BC_Overlay.SafeText(maximum, "0")
-    }
-
-    static CloneSnapshot(snapshot) {
-        copy := {}
-        for key, value in snapshot.OwnProps() {
-            copy.%key% := value
-        }
-        return copy
     }
 
     static IsHeldFrame(snapshot) {
@@ -1201,8 +1243,12 @@ class BC_Overlay {
             displaySnapshot := snapshot.accepted ? snapshot : BC_Overlay.BuildHeldDisplaySnapshot(snapshot)
             BC_Overlay.LiveUiLastSnapshot := displaySnapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
-            BC_Overlay.RenderSnapshot(displaySnapshot, BC_Overlay.CurrentTitle)
-            BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot)) " | Age " BC_State.AgeText(displaySnapshot))
+            if BC_Overlay.ShouldRenderLiveSnapshot(displaySnapshot) {
+                BC_Overlay.RenderSnapshot(displaySnapshot, BC_Overlay.CurrentTitle)
+                BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Sample " BC_Overlay.LiveUiIntervalMs "ms | Paint " BC_Overlay.LiveUiRenderIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot)) " | Age " BC_State.AgeText(displaySnapshot))
+                BC_Overlay.LiveUiLastRenderTick := A_TickCount
+                BC_Overlay.LiveUiLastRenderedSnapshot := BC_Overlay.CloneSnapshot(displaySnapshot)
+            }
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
             BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode liveui error`r`n" err.Message "`r`n" err.Stack)
@@ -1244,11 +1290,14 @@ class BC_Overlay {
         BC_Overlay.LiveUiMode := StrLower(source)
         BC_Overlay.LiveUiSourceLabel := BC_Overlay.LiveUiMode
         BC_Overlay.LiveUiIntervalMs := Max(25, Integer(intervalMs))
+        BC_Overlay.LiveUiRenderIntervalMs := Max(BC_Config.LiveSurfaceDefaultRenderMs, BC_Overlay.LiveUiIntervalMs)
         BC_Overlay.LiveUiAutoCloseMs := Max(0, Integer(autoCloseMs))
         BC_Overlay.LiveUiTickCount := 0
         BC_Overlay.LiveUiStartTick := A_TickCount
+        BC_Overlay.LiveUiLastRenderTick := 0
         BC_Overlay.LiveUiLastSnapshot := ""
         BC_Overlay.LiveUiLastAcceptedSnapshot := ""
+        BC_Overlay.LiveUiLastRenderedSnapshot := ""
         BC_Overlay.ResetLiveUiHistory()
 
         if (BC_Overlay.LiveUiMode = "synthetic") {
@@ -1277,7 +1326,7 @@ class BC_Overlay {
         } else {
             BC_Overlay.EnsureWindow(windowTitle)
         }
-        BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick 0 | Interval " BC_Overlay.LiveUiIntervalMs "ms")
+        BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick 0 | Sample " BC_Overlay.LiveUiIntervalMs "ms | Paint " BC_Overlay.LiveUiRenderIntervalMs "ms")
 
         BC_Overlay.LiveUiTick()
         BC_Overlay.WaitUntilLiveUiComplete()
@@ -1315,27 +1364,27 @@ class BC_Overlay {
         return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | BMP", autoCloseMs)
     }
 
-    static RunLiveUiSynthetic(intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveUiSynthetic(intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("synthetic", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 
-    static RunLiveUiBmp(path, cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveUiBmp(path, cropX := 0, cropY := 0, intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("bmp", path, cropX, cropY, intervalMs, autoCloseMs, title)
     }
 
-    static RunLiveUiLive(intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveUiLive(intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("live", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 
-    static RunLiveHudSynthetic(intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveHudSynthetic(intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveSurface("hud", "synthetic", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 
-    static RunLiveHudBmp(path, cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveHudBmp(path, cropX := 0, cropY := 0, intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveSurface("hud", "bmp", path, cropX, cropY, intervalMs, autoCloseMs, title)
     }
 
-    static RunLiveHudLive(intervalMs := 250, autoCloseMs := 0, title := "") {
+    static RunLiveHudLive(intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveSurface("hud", "live", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 }
