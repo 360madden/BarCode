@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.21
+version: 0.3.22
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.

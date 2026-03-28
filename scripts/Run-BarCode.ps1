@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.21
+version: 0.3.22
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -27,6 +27,8 @@ $latestStateTextPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\la
 $latestStateJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\latest-state.json'
 $latestHistoryJsonPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.json'
 $latestHistoryJsonlPath = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\state\recent-history.jsonl'
+$screenshotsRoot = 'C:\Users\mrkoo\OneDrive\Documents\RIFT\Screenshots'
+$inputCacheRoot = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\input-cache'
 $archiveRoot = 'C:\Users\mrkoo\AppData\Local\BarCode\DesktopAHK\out\archive'
 $archiveKeepCount = 50
 
@@ -79,6 +81,54 @@ function Get-LatestRunReportPathFromLines {
     }
 
     return $null
+}
+
+function Get-LatestRiftScreenshot {
+    param([string]$DirectoryPath)
+
+    if (-not (Test-Path -LiteralPath $DirectoryPath)) {
+        throw "RIFT screenshot directory not found: $DirectoryPath"
+    }
+
+    $image = Get-ChildItem -LiteralPath $DirectoryPath -File -ErrorAction Stop |
+        Where-Object { @('.bmp', '.jpg', '.jpeg', '.png') -contains $_.Extension.ToLowerInvariant() } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if ($null -eq $image) {
+        throw "No RIFT screenshots were found in $DirectoryPath"
+    }
+
+    return $image.FullName
+}
+
+function Convert-ImageToBmpIfNeeded {
+    param([string]$SourcePath)
+
+    $extension = [System.IO.Path]::GetExtension($SourcePath).ToLowerInvariant()
+    if ($extension -eq '.bmp') {
+        return $SourcePath
+    }
+
+    New-Item -ItemType Directory -Path $inputCacheRoot -Force | Out-Null
+    Add-Type -AssemblyName System.Drawing
+
+    $destinationPath = Join-Path $inputCacheRoot ([System.IO.Path]::GetFileNameWithoutExtension($SourcePath) + '.bmp')
+    if (Test-Path -LiteralPath $destinationPath) {
+        Remove-Item -LiteralPath $destinationPath -Force
+    }
+
+    $image = $null
+    try {
+        $image = [System.Drawing.Image]::FromFile($SourcePath)
+        $image.Save($destinationPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
+    } finally {
+        if ($null -ne $image) {
+            $image.Dispose()
+        }
+    }
+
+    return $destinationPath
 }
 
 function Wait-ForFreshFile {
@@ -230,8 +280,34 @@ function Trim-RunArchives {
     }
 }
 
+$resolvedMode = $Mode
+$resolvedModeArgs = @($ModeArgs)
+$latestScreenshotSourcePath = $null
+$resolvedInputPath = $null
+
+switch ($Mode.ToLowerInvariant()) {
+    'bmp-latest' {
+        $latestScreenshotSourcePath = Get-LatestRiftScreenshot -DirectoryPath $screenshotsRoot
+        $resolvedInputPath = Convert-ImageToBmpIfNeeded -SourcePath $latestScreenshotSourcePath
+        $resolvedMode = 'bmp'
+        $resolvedModeArgs = @($resolvedInputPath) + $ModeArgs
+    }
+    'hudbmp-latest' {
+        $latestScreenshotSourcePath = Get-LatestRiftScreenshot -DirectoryPath $screenshotsRoot
+        $resolvedInputPath = Convert-ImageToBmpIfNeeded -SourcePath $latestScreenshotSourcePath
+        $resolvedMode = 'hudbmp'
+        $resolvedModeArgs = @($resolvedInputPath) + $ModeArgs
+    }
+    'uibmp-latest' {
+        $latestScreenshotSourcePath = Get-LatestRiftScreenshot -DirectoryPath $screenshotsRoot
+        $resolvedInputPath = Convert-ImageToBmpIfNeeded -SourcePath $latestScreenshotSourcePath
+        $resolvedMode = 'uibmp'
+        $resolvedModeArgs = @($resolvedInputPath) + $ModeArgs
+    }
+}
+
 $runStartTime = Get-Date
-$arguments = @('/ErrorStdOut=UTF-8', $mainScript, $Mode) + $ModeArgs
+$arguments = @('/ErrorStdOut=UTF-8', $mainScript, $resolvedMode) + $resolvedModeArgs
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $exe
 $startInfo.Arguments = (($arguments | ForEach-Object { Format-ProcessArgument $_ }) -join ' ')
@@ -250,6 +326,10 @@ $stdout = $process.StandardOutput.ReadToEnd().Trim()
 $stderr = $process.StandardError.ReadToEnd().Trim()
 
 Write-Output ("ExitCode=" + $process.ExitCode)
+if ($latestScreenshotSourcePath) {
+    Write-Output ("LatestScreenshot=" + $latestScreenshotSourcePath)
+    Write-Output ("ResolvedBmp=" + $resolvedInputPath)
+}
 
 if ($stdout) {
     Write-Output '--- STDOUT ---'
@@ -261,6 +341,13 @@ if ($stderr) {
     Write-Output $stderr
 }
 
+if ($Mode -in @('help', '--help', '-h')) {
+    Write-Output '--- WRAPPER MODES ---'
+    Write-Output '  bmp-latest [cropX] [cropY]'
+    Write-Output '  hudbmp-latest [cropX] [cropY] [autoCloseMs]'
+    Write-Output '  uibmp-latest [cropX] [cropY] [autoCloseMs]'
+}
+
 $latestRun = Wait-ForLatestRunCompletion -NotOlderThan $runStartTime
 $reportPath = Get-LatestRunReportPathFromLines -Lines $latestRun
 $hasFreshReport = $false
@@ -268,7 +355,7 @@ if ($reportPath) {
     $hasFreshReport = Wait-ForFreshFile -LiteralPath $reportPath -NotOlderThan $runStartTime -TimeoutMs 1500
 }
 $hasFreshSummary = $false
-if ($Mode -ne 'summary') {
+if ($resolvedMode -ne 'summary') {
     $hasFreshSummary = Wait-ForFreshFile -LiteralPath $latestSummaryPath -NotOlderThan $runStartTime -TimeoutMs 1500
 }
 
