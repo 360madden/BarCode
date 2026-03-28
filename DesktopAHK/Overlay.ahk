@@ -32,6 +32,8 @@ class BC_Overlay {
     static Controls := {}
     static CurrentTitle := "BarCode Reader Dashboard"
     static SurfaceMode := "dashboard"
+    static WindowNoActivate := false
+    static ActiveWindowNoActivate := false
     static LastSnapshot := ""
     static LiveUiMode := "synthetic"
     static LiveUiSourceLabel := "synthetic"
@@ -57,11 +59,12 @@ class BC_Overlay {
 
         BC_Overlay.Window := ""
         BC_Overlay.Controls := {}
+        BC_Overlay.ActiveWindowNoActivate := false
     }
 
     static EnsureWindow(title := "BarCode Reader Dashboard") {
         if IsObject(BC_Overlay.Window) {
-            if (BC_Overlay.SurfaceMode = "dashboard") {
+            if (BC_Overlay.SurfaceMode = "dashboard" && BC_Overlay.ActiveWindowNoActivate = BC_Overlay.WindowNoActivate) {
                 try {
                     BC_Overlay.Window.Title := title
                     return BC_Overlay.Window
@@ -73,8 +76,10 @@ class BC_Overlay {
         }
 
         BC_Overlay.SurfaceMode := "dashboard"
-
-        window := Gui("+AlwaysOnTop +ToolWindow +MinSize740x960", title)
+        options := BC_Overlay.WindowNoActivate
+            ? "+AlwaysOnTop +ToolWindow +MinSize740x960 +E0x08000000"
+            : "+AlwaysOnTop +ToolWindow +MinSize740x960"
+        window := Gui(options, title)
         window.BackColor := BC_Overlay.Palette.WindowBack
         window.MarginX := 12
         window.MarginY := 12
@@ -174,6 +179,7 @@ class BC_Overlay {
         closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
 
         BC_Overlay.Window := window
+        BC_Overlay.ActiveWindowNoActivate := BC_Overlay.WindowNoActivate
         BC_Overlay.Controls := {
             Header: header,
             Status: status,
@@ -208,7 +214,7 @@ class BC_Overlay {
 
     static EnsureHudWindow(title := "BarCode Reader HUD") {
         if IsObject(BC_Overlay.Window) {
-            if (BC_Overlay.SurfaceMode = "hud") {
+            if (BC_Overlay.SurfaceMode = "hud" && BC_Overlay.ActiveWindowNoActivate = BC_Overlay.WindowNoActivate) {
                 try {
                     BC_Overlay.Window.Title := title
                     return BC_Overlay.Window
@@ -220,68 +226,93 @@ class BC_Overlay {
         }
 
         BC_Overlay.SurfaceMode := "hud"
-        window := Gui("+AlwaysOnTop +ToolWindow +MinSize760x540", title)
+        options := BC_Overlay.WindowNoActivate
+            ? "+AlwaysOnTop +ToolWindow +MinSize760x800 +E0x08000000"
+            : "+AlwaysOnTop +ToolWindow +MinSize760x800"
+        window := Gui(options, title)
         window.BackColor := BC_Overlay.Palette.WindowBack
         window.MarginX := 12
         window.MarginY := 12
         window.SetFont("s11 c" BC_Overlay.Palette.BodyText, "Segoe UI")
 
+        contentX := 12
+        contentWidth := 720
+        buttonY := 78
+        buttonGap := 10
+        refreshX := 492
+        copyPathX := refreshX + 78 + buttonGap
+        copySummaryX := copyPathX + 98 + buttonGap
+        copyHistoryX := copySummaryX + 110 + buttonGap
+        closeX := copyHistoryX + 104 + buttonGap
+        compareY := 116
+        topGroupY := 150
+        topGroupHeight := 270
+        groupGap := 16
+        groupWidth := Floor((contentWidth - groupGap) / 2)
+        playerGroupX := contentX
+        targetGroupX := playerGroupX + groupWidth + groupGap
+        groupInnerXOffset := 14
+        groupInnerWidth := groupWidth - 38
+        readerY := topGroupY + topGroupHeight + 18
+        readerHeight := 212
+        footerY := readerY + readerHeight + 16
+
         window.SetFont("s14 Bold c" BC_Overlay.Palette.Header, "Consolas")
-        header := window.AddText("xm ym w720", "BarCode Reader HUD")
+        header := window.AddText(Format("x{} y12 w{}", contentX, contentWidth), "BarCode Reader HUD")
         window.SetFont("s10 c" BC_Overlay.Palette.StatusOk, "Consolas")
-        status := window.AddText("xm y+8 w720", "Status: waiting")
+        status := window.AddText(Format("x{} y44 w{}", contentX, contentWidth), "Status: waiting")
         window.SetFont("s10 c" BC_Overlay.Palette.Mode, "Consolas")
-        liveMode := window.AddText("xm y+4 w720", "Mode: idle")
+        liveMode := window.AddText(Format("x{} y70 w220", contentX), "Mode: idle")
 
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
-        refreshButton := window.AddButton("x+m yp-2 w80", "Refresh")
-        copyPathButton := window.AddButton("x+m yp w100", "Copy State Path")
-        copySummaryButton := window.AddButton("x+m yp w110", "Copy Summary")
-        copyHistoryButton := window.AddButton("x+m yp w100", "Copy History")
-        closeButton := window.AddButton("x+m yp w70", "Close")
+        refreshButton := window.AddButton(Format("x{} y{} w78", refreshX, buttonY), "Refresh")
+        copyPathButton := window.AddButton(Format("x{} y{} w98", copyPathX, buttonY), "State Path")
+        copySummaryButton := window.AddButton(Format("x{} y{} w110", copySummaryX, buttonY), "Copy Summary")
+        copyHistoryButton := window.AddButton(Format("x{} y{} w104", copyHistoryX, buttonY), "Copy History")
+        closeButton := window.AddButton(Format("x{} y{} w70", closeX, buttonY), "Close")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
-        compareText := window.AddText("xm y+16 w720", "Compare: waiting")
+        compareText := window.AddText(Format("x{} y{} w{}", contentX, compareY, contentWidth), "Compare: waiting")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionPlayer, "Consolas")
-        playerGroup := window.AddGroupBox("xm y+14 w350 h225", "Player")
+        playerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", playerGroupX, topGroupY, groupWidth, topGroupHeight), "Player")
         window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
-        playerHealthLabel := window.AddText("xp+14 yp+24 w312", "Health: -")
-        playerHealthBar := window.AddProgress("xp yp+22 w312 h18 c4CAF50 Background202020", 0)
-        playerResourceLabel := window.AddText("xp yp+28 w312", "Resource: -")
-        playerResourceBar := window.AddProgress("xp yp+22 w312 h18 c2AA1D3 Background202020", 0)
+        playerHealthLabel := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 24, groupInnerWidth), "Health: -")
+        playerHealthBar := window.AddProgress(Format("x{} y{} w{} h18 c4CAF50 Background202020", playerGroupX + groupInnerXOffset, topGroupY + 48, groupInnerWidth), 0)
+        playerResourceLabel := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 84, groupInnerWidth), "Resource: -")
+        playerResourceBar := window.AddProgress(Format("x{} y{} w{} h18 c2AA1D3 Background202020", playerGroupX + groupInnerXOffset, topGroupY + 108, groupInnerWidth), 0)
         window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
-        playerMeta := window.AddText("xp yp+28 w312", "Level / Calling / Role")
+        playerMeta := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 144, groupInnerWidth), "Level / Calling / Role")
         window.SetFont("s9 c" BC_Overlay.Palette.StatusOk, "Consolas")
-        playerStatus := window.AddText("xp yp+24 w312", "State: -")
+        playerStatus := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 170, groupInnerWidth), "State: -")
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Consolas")
-        playerOffense := window.AddEdit("xp yp+24 w312 r4 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
+        playerOffense := window.AddEdit(Format("x{} y{} w{} r4 ReadOnly WantCtrlA Background{}", playerGroupX + groupInnerXOffset, topGroupY + 194, groupInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionTarget, "Consolas")
-        targetGroup := window.AddGroupBox("x+m yp w350 h225", "Target")
+        targetGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", targetGroupX, topGroupY, groupWidth, topGroupHeight), "Target")
         window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
-        targetHealthLabel := window.AddText("xp+14 yp+24 w312", "Health: -")
-        targetHealthBar := window.AddProgress("xp yp+22 w312 h18 cE57373 Background202020", 0)
-        targetResourceLabel := window.AddText("xp yp+28 w312", "Resource: -")
-        targetResourceBar := window.AddProgress("xp yp+22 w312 h18 cFFB74D Background202020", 0)
+        targetHealthLabel := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 24, groupInnerWidth), "Health: -")
+        targetHealthBar := window.AddProgress(Format("x{} y{} w{} h18 cE57373 Background202020", targetGroupX + groupInnerXOffset, topGroupY + 48, groupInnerWidth), 0)
+        targetResourceLabel := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 84, groupInnerWidth), "Resource: -")
+        targetResourceBar := window.AddProgress(Format("x{} y{} w{} h18 cFFB74D Background202020", targetGroupX + groupInnerXOffset, topGroupY + 108, groupInnerWidth), 0)
         window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
-        targetMeta := window.AddText("xp yp+28 w312", "Level / Flags")
+        targetMeta := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 144, groupInnerWidth), "Level / Flags")
         window.SetFont("s9 c" BC_Overlay.Palette.SectionTarget, "Consolas")
-        targetStatus := window.AddText("xp yp+24 w312", "State: -")
+        targetStatus := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 170, groupInnerWidth), "State: -")
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Consolas")
-        targetExtras := window.AddEdit("xp yp+24 w312 r4 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
+        targetExtras := window.AddEdit(Format("x{} y{} w{} r4 ReadOnly WantCtrlA Background{}", targetGroupX + groupInnerXOffset, topGroupY + 194, groupInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionReader, "Consolas")
-        readerGroup := window.AddGroupBox("xm y+16 w720 h190", "Reader")
+        readerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", contentX, readerY, contentWidth, readerHeight), "Reader")
         window.SetFont("s10 c" BC_Overlay.Palette.Header, "Consolas")
-        transportText := window.AddText("xp+14 yp+24 w340 h48", "")
+        transportText := window.AddText(Format("x{} y{} w340 h72", contentX + 14, readerY + 24), "")
         window.SetFont("s10 c" BC_Overlay.Palette.CaptureText, "Consolas")
-        captureText := window.AddText("x+m yp w340 h48", "")
+        captureText := window.AddText(Format("x{} y{} w340 h72", contentX + 366, readerY + 24), "")
         window.SetFont("s9 c" BC_Overlay.Palette.HistoryText, "Consolas")
-        sessionText := window.AddText("xp yp+52 w694 h32", "")
-        historyText := window.AddEdit("xp yp+34 w694 r3 ReadOnly WantCtrlA Background" BC_Overlay.Palette.PanelBack, "")
+        sessionText := window.AddText(Format("x{} y{} w694 h48", contentX + 14, readerY + 104), "")
+        historyText := window.AddEdit(Format("x{} y{} w694 r3 ReadOnly WantCtrlA Background{}", contentX + 14, readerY + 154, BC_Overlay.Palette.PanelBack), "")
         window.SetFont("s9 c" BC_Overlay.Palette.Footer, "Consolas")
-        footer := window.AddText("xp yp+52 w694", "Close the window to exit this HUD preview.")
+        footer := window.AddText(Format("x{} y{} w{}", contentX + 14, footerY, contentWidth - 14), "Close the window to exit this HUD preview.")
 
         window.OnEvent("Close", BC_Overlay.OnWindowClosed)
         window.OnEvent("Escape", BC_Overlay.OnWindowClosed)
@@ -292,6 +323,7 @@ class BC_Overlay {
         closeButton.OnEvent("Click", BC_Overlay.OnCloseClicked)
 
         BC_Overlay.Window := window
+        BC_Overlay.ActiveWindowNoActivate := BC_Overlay.WindowNoActivate
         BC_Overlay.Controls := {
             Header: header,
             Status: status,
@@ -384,8 +416,17 @@ class BC_Overlay {
         BC_Overlay.LiveUiAutoCloseMs := 0
         BC_Overlay.LiveUiTickCount := 0
         BC_Overlay.LiveUiStartTick := 0
+        BC_Overlay.WindowNoActivate := false
         BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.ResetLiveUiHistory()
+    }
+
+    static ShowWindow(window) {
+        if BC_Overlay.WindowNoActivate {
+            window.Show("NA")
+            return
+        }
+        window.Show()
     }
 
     static HasLiveUiProvider() {
@@ -870,7 +911,7 @@ class BC_Overlay {
         controls.HistoryBody.Value := BC_Overlay.RenderLiveUiHistory()
         controls.Footer.Text := "Summary: " BC_Config.LiveSummaryTextPath " | State: " BC_Config.LiveStateTextPath
 
-        window.Show()
+        BC_Overlay.ShowWindow(window)
         return window
     }
 
@@ -929,7 +970,7 @@ class BC_Overlay {
         controls.HistoryText.Value := BC_Overlay.RenderLiveUiHistory()
         controls.Footer.Text := BC_Overlay.FormatReaderFooter(snapshot)
 
-        window.Show()
+        BC_Overlay.ShowWindow(window)
         return window
     }
 
@@ -943,6 +984,7 @@ class BC_Overlay {
     static ShowCurrentState(title := "BarCode Reader Dashboard", autoCloseMs := 0) {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
+        BC_Overlay.WindowNoActivate := false
         BC_Overlay.LiveUiLastSnapshot := ""
         BC_Overlay.LiveUiLastAcceptedSnapshot := ""
         snapshot := BC_State.BuildSnapshot()
@@ -971,6 +1013,7 @@ class BC_Overlay {
     static ShowCurrentHud(title := "BarCode Reader HUD", autoCloseMs := 0) {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
+        BC_Overlay.WindowNoActivate := false
         BC_Overlay.SurfaceMode := "hud"
         BC_Overlay.LiveUiLastSnapshot := ""
         BC_Overlay.LiveUiLastAcceptedSnapshot := ""
@@ -1147,6 +1190,7 @@ class BC_Overlay {
     static StartLiveSurface(surfaceMode := "dashboard", source := "synthetic", path := "", cropX := 0, cropY := 0, intervalMs := 250, autoCloseMs := 0, title := "") {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
+        BC_Overlay.WindowNoActivate := true
         BC_State.ResetLiveOutputs()
         BC_Overlay.SurfaceMode := surfaceMode
         BC_Overlay.LiveUiMode := StrLower(source)
