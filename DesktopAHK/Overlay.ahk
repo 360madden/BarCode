@@ -92,8 +92,8 @@ class BC_Overlay {
 
         BC_Overlay.SurfaceMode := "dashboard"
         options := BC_Overlay.WindowNoActivate
-            ? "+AlwaysOnTop +ToolWindow +MinSize740x960 +E0x08000000"
-            : "+AlwaysOnTop +ToolWindow +MinSize740x960"
+            ? "+AlwaysOnTop +ToolWindow +MinSize1020x700 +E0x08000000"
+            : "+AlwaysOnTop +ToolWindow +MinSize1020x700"
         window := Gui(options, title)
         window.BackColor := BC_Overlay.Palette.WindowBack
         window.MarginX := 12
@@ -101,29 +101,42 @@ class BC_Overlay {
         window.SetFont("s11 c" BC_Overlay.Palette.BodyText, "Segoe UI")
 
         contentX := 12
-        contentWidth := 700
+        contentWidth := 980
         buttonY := 64
         buttonGap := 8
-        refreshX := 242
-        copyPathX := refreshX + 78 + buttonGap
-        copySummaryX := copyPathX + 96 + buttonGap
-        copyHistoryX := copySummaryX + 104 + buttonGap
-        closeX := copyHistoryX + 90 + buttonGap
-        topGroupY := 104
-        topGroupHeight := 248
-        groupGap := 20
-        groupWidth := Floor((contentWidth - groupGap) / 2)
-        playerGroupX := contentX
-        targetGroupX := playerGroupX + groupWidth + groupGap
-        groupInnerXOffset := 14
-        groupInnerWidth := groupWidth - 40
-        readerY := topGroupY + topGroupHeight + 18
-        readerHeight := 180
-        detailsY := readerY + readerHeight + 18
-        detailsHeight := 210
-        historyY := detailsY + detailsHeight + 18
-        historyHeight := 120
-        footerY := historyY + historyHeight + 16
+        refreshWidth := 78
+        copyPathWidth := 96
+        copySummaryWidth := 104
+        copyHistoryWidth := 90
+        closeWidth := 70
+        totalButtonWidth := refreshWidth + copyPathWidth + copySummaryWidth + copyHistoryWidth + closeWidth + (buttonGap * 4)
+        refreshX := contentX + contentWidth - totalButtonWidth
+        copyPathX := refreshX + refreshWidth + buttonGap
+        copySummaryX := copyPathX + copyPathWidth + buttonGap
+        copyHistoryX := copySummaryX + copySummaryWidth + buttonGap
+        closeX := copyHistoryX + copyHistoryWidth + buttonGap
+        compareY := 96
+        columnY := 126
+        columnGap := 18
+        leftColumnWidth := 474
+        rightColumnWidth := contentWidth - leftColumnWidth - columnGap
+        leftColumnX := contentX
+        rightColumnX := leftColumnX + leftColumnWidth + columnGap
+        leftGroupHeight := 224
+        playerGroupY := columnY
+        targetGroupY := playerGroupY + leftGroupHeight + 16
+        leftInnerXOffset := 14
+        leftInnerWidth := leftColumnWidth - 30
+        rightInnerXOffset := 14
+        rightInnerWidth := rightColumnWidth - 30
+        readerY := columnY
+        readerHeight := 198
+        readerHalfWidth := Floor((rightInnerWidth - 16) / 2)
+        detailsY := readerY + readerHeight + 16
+        detailsHeight := 148
+        historyY := detailsY + detailsHeight + 16
+        historyHeight := 132
+        footerY := historyY + historyHeight + 12
 
         window.SetFont("s14 Bold c" BC_Overlay.Palette.Header, "Consolas")
         header := window.AddText(Format("x{} y12 w{}", contentX, contentWidth), "BarCode Reader Dashboard")
@@ -131,56 +144,58 @@ class BC_Overlay {
         status := window.AddText(Format("x{} y44 w{}", contentX, contentWidth), "Status: waiting")
         window.SetFont("s10 c" BC_Overlay.Palette.Mode, "Consolas")
         liveMode := window.AddText(Format("x{} y68 w220", contentX), "Mode: idle")
+        window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
+        compareText := window.AddText(Format("x{} y{} w{}", contentX, compareY, contentWidth), "Compare: waiting")
 
         window.SetFont("s9 c" BC_Overlay.Palette.BodyText, "Segoe UI")
-        refreshButton := window.AddButton(Format("x{} y{} w78", refreshX, buttonY), "Refresh")
-        copyPathButton := window.AddButton(Format("x{} y{} w96", copyPathX, buttonY), "State Path")
-        copySummaryButton := window.AddButton(Format("x{} y{} w104", copySummaryX, buttonY), "Copy Summary")
-        copyHistoryButton := window.AddButton(Format("x{} y{} w90", copyHistoryX, buttonY), "Copy History")
-        closeButton := window.AddButton(Format("x{} y{} w70", closeX, buttonY), "Close")
+        refreshButton := window.AddButton(Format("x{} y{} w{}", refreshX, buttonY, refreshWidth), "Refresh")
+        copyPathButton := window.AddButton(Format("x{} y{} w{}", copyPathX, buttonY, copyPathWidth), "State Path")
+        copySummaryButton := window.AddButton(Format("x{} y{} w{}", copySummaryX, buttonY, copySummaryWidth), "Copy Summary")
+        copyHistoryButton := window.AddButton(Format("x{} y{} w{}", copyHistoryX, buttonY, copyHistoryWidth), "Copy History")
+        closeButton := window.AddButton(Format("x{} y{} w{}", closeX, buttonY, closeWidth), "Close")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionPlayer, "Consolas")
-        playerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", playerGroupX, topGroupY, groupWidth, topGroupHeight), "Player")
+        playerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", leftColumnX, playerGroupY, leftColumnWidth, leftGroupHeight), "Player")
         window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
-        playerHealthLabel := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 24, groupInnerWidth), "Health: ")
-        playerHealthBar := window.AddProgress(Format("x{} y{} w{} h16 c4CAF50 Background202020", playerGroupX + groupInnerXOffset, topGroupY + 46, groupInnerWidth), 0)
-        playerResourceLabel := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 74, groupInnerWidth), "Resource: ")
-        playerResourceBar := window.AddProgress(Format("x{} y{} w{} h16 c2AA1D3 Background202020", playerGroupX + groupInnerXOffset, topGroupY + 96, groupInnerWidth), 0)
+        playerHealthLabel := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, playerGroupY + 24, leftInnerWidth), "Health: ")
+        playerHealthBar := window.AddProgress(Format("x{} y{} w{} h16 c4CAF50 Background202020", leftColumnX + leftInnerXOffset, playerGroupY + 46, leftInnerWidth), 0)
+        playerResourceLabel := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, playerGroupY + 74, leftInnerWidth), "Resource: ")
+        playerResourceBar := window.AddProgress(Format("x{} y{} w{} h16 c2AA1D3 Background202020", leftColumnX + leftInnerXOffset, playerGroupY + 96, leftInnerWidth), 0)
         window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
-        playerMeta := window.AddText(Format("x{} y{} w{}", playerGroupX + groupInnerXOffset, topGroupY + 124, groupInnerWidth), "Level / Calling / Role")
+        playerMeta := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, playerGroupY + 124, leftInnerWidth), "Level / Calling / Role")
         window.SetFont("s9 c" BC_Overlay.Palette.StatusOk, "Consolas")
-        playerOffense := window.AddEdit(Format("x{} y{} w{} r5 ReadOnly WantCtrlA Background{}", playerGroupX + groupInnerXOffset, topGroupY + 148, groupInnerWidth, BC_Overlay.Palette.PanelBack), "")
+        playerOffense := window.AddEdit(Format("x{} y{} w{} r5 ReadOnly WantCtrlA Background{}", leftColumnX + leftInnerXOffset, playerGroupY + 148, leftInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionTarget, "Consolas")
-        targetGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", targetGroupX, topGroupY, groupWidth, topGroupHeight), "Target")
+        targetGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", leftColumnX, targetGroupY, leftColumnWidth, leftGroupHeight), "Target")
         window.SetFont("s10 c" BC_Overlay.Palette.BodyText, "Consolas")
-        targetHealthLabel := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 24, groupInnerWidth), "Health: ")
-        targetHealthBar := window.AddProgress(Format("x{} y{} w{} h16 cE57373 Background202020", targetGroupX + groupInnerXOffset, topGroupY + 46, groupInnerWidth), 0)
-        targetResourceLabel := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 74, groupInnerWidth), "Resource: ")
-        targetResourceBar := window.AddProgress(Format("x{} y{} w{} h16 cFFB74D Background202020", targetGroupX + groupInnerXOffset, topGroupY + 96, groupInnerWidth), 0)
+        targetHealthLabel := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, targetGroupY + 24, leftInnerWidth), "Health: ")
+        targetHealthBar := window.AddProgress(Format("x{} y{} w{} h16 cE57373 Background202020", leftColumnX + leftInnerXOffset, targetGroupY + 46, leftInnerWidth), 0)
+        targetResourceLabel := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, targetGroupY + 74, leftInnerWidth), "Resource: ")
+        targetResourceBar := window.AddProgress(Format("x{} y{} w{} h16 cFFB74D Background202020", leftColumnX + leftInnerXOffset, targetGroupY + 96, leftInnerWidth), 0)
         window.SetFont("s10 c" BC_Overlay.Palette.MutedText, "Consolas")
-        targetMeta := window.AddText(Format("x{} y{} w{}", targetGroupX + groupInnerXOffset, topGroupY + 124, groupInnerWidth), "Level / Flags")
+        targetMeta := window.AddText(Format("x{} y{} w{}", leftColumnX + leftInnerXOffset, targetGroupY + 124, leftInnerWidth), "Level / Flags")
         window.SetFont("s9 c" BC_Overlay.Palette.SectionTarget, "Consolas")
-        targetExtras := window.AddEdit(Format("x{} y{} w{} r5 ReadOnly WantCtrlA Background{}", targetGroupX + groupInnerXOffset, topGroupY + 148, groupInnerWidth, BC_Overlay.Palette.PanelBack), "")
+        targetExtras := window.AddEdit(Format("x{} y{} w{} r5 ReadOnly WantCtrlA Background{}", leftColumnX + leftInnerXOffset, targetGroupY + 148, leftInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.SectionReader, "Consolas")
-        readerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", contentX, readerY, contentWidth, readerHeight), "Reader")
+        readerGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", rightColumnX, readerY, rightColumnWidth, readerHeight), "Reader")
         window.SetFont("s10 c" BC_Overlay.Palette.Header, "Consolas")
-        transportText := window.AddText(Format("x{} y{} w320 h96", contentX + 14, readerY + 24), "")
+        transportText := window.AddText(Format("x{} y{} w{} h82", rightColumnX + rightInnerXOffset, readerY + 24, readerHalfWidth), "")
         window.SetFont("s10 c" BC_Overlay.Palette.CaptureText, "Consolas")
-        captureText := window.AddText(Format("x{} y{} w330 h96", contentX + 356, readerY + 24), "")
+        captureText := window.AddText(Format("x{} y{} w{} h82", rightColumnX + rightInnerXOffset + readerHalfWidth + 16, readerY + 24, readerHalfWidth), "")
         window.SetFont("s10 c" BC_Overlay.Palette.Mode, "Consolas")
-        sessionText := window.AddText(Format("x{} y{} w670 h48", contentX + 14, readerY + 124), "")
+        sessionText := window.AddText(Format("x{} y{} w{} h60", rightColumnX + rightInnerXOffset, readerY + 116, rightInnerWidth), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
-        detailsGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", contentX, detailsY, contentWidth, detailsHeight), "Snapshot Details")
+        detailsGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", rightColumnX, detailsY, rightColumnWidth, detailsHeight), "Snapshot Details")
         window.SetFont("s9 c" BC_Overlay.Palette.DetailText, "Consolas")
-        detailsBody := window.AddEdit(Format("x{} y{} w670 r8 ReadOnly WantCtrlA Background{}", contentX + 14, detailsY + 24, BC_Overlay.Palette.PanelBack), "")
+        detailsBody := window.AddEdit(Format("x{} y{} w{} r5 ReadOnly WantCtrlA Background{}", rightColumnX + rightInnerXOffset, detailsY + 24, rightInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
-        historyGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", contentX, historyY, contentWidth, historyHeight), "Recent Frames")
+        historyGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", rightColumnX, historyY, rightColumnWidth, historyHeight), "Recent Frames")
         window.SetFont("s9 c" BC_Overlay.Palette.HistoryText, "Consolas")
-        historyBody := window.AddEdit(Format("x{} y{} w670 r4 ReadOnly WantCtrlA Background{}", contentX + 14, historyY + 24, BC_Overlay.Palette.PanelBack), "")
+        historyBody := window.AddEdit(Format("x{} y{} w{} r4 ReadOnly WantCtrlA Background{}", rightColumnX + rightInnerXOffset, historyY + 24, rightInnerWidth, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s9 c" BC_Overlay.Palette.Footer, "Consolas")
         footer := window.AddText(Format("x{} y{} w{}", contentX, footerY, contentWidth), "Close the window to exit this reader preview.")
@@ -204,6 +219,7 @@ class BC_Overlay {
             CopySummaryButton: copySummaryButton,
             CopyHistoryButton: copyHistoryButton,
             CloseButton: closeButton,
+            CompareText: compareText,
             PlayerHealthLabel: playerHealthLabel,
             PlayerHealthBar: playerHealthBar,
             PlayerResourceLabel: playerResourceLabel,
@@ -979,9 +995,11 @@ class BC_Overlay {
 
         BC_Overlay.SetControlText("Header", title)
         BC_Overlay.SetControlFontColor("Status", statusColor)
+        BC_Overlay.SetControlFontColor("CompareText", BC_Overlay.CompareColor(snapshot))
         BC_Overlay.SetControlFontColor("CaptureText", BC_Overlay.CaptureColor(snapshot))
         BC_Overlay.SetControlFontColor("SessionText", BC_Overlay.SessionColor(snapshot))
         BC_Overlay.SetControlText("Status", "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText)
+        BC_Overlay.SetControlText("CompareText", BC_Overlay.FormatHudCompareText(snapshot))
         BC_Overlay.SetControlText("PlayerHealthLabel", "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")")
         BC_Overlay.SetControlValue("PlayerHealthBar", BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
         BC_Overlay.SetControlText("PlayerResourceLabel", "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none"))
