@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Protocol.ahk
-version: 0.3.0
-purpose: Implements BC-Strip/1 schema-3 scoped player-target HUD transport packing, parsing, CRC, and module matrix construction.
+version: 0.4.0
+purpose: Implements BC-Strip/1 schema-4 ops+tactical transport packing, parsing, CRC, and module matrix construction.
 dependencies: DesktopAHK/Config.ahk
-important assumptions: Uses CRC-16/CCITT-FALSE, fixed P720A geometry, and a synthetic player-target HUD sample for the reader smoke.
+important assumptions: Uses CRC-16/CCITT-FALSE, fixed P720A geometry, and synthetic ops+tactical samples for reader smoke.
 protocol version: BC-Strip/1
 framework module role: Protocol definition
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -25,9 +25,24 @@ class BC_Protocol {
         return numeric
     }
 
+    static ClampSigned(value, minValue, maxValue) {
+        try {
+            numeric := Integer(value)
+        } catch {
+            numeric := 0
+        }
+        if (numeric < minValue) {
+            return minValue
+        }
+        if (numeric > maxValue) {
+            return maxValue
+        }
+        return numeric
+    }
+
     static GetProfile(profileId := "P720A") {
         if (profileId != "P720A") {
-            throw Error("Unsupported profile in reader smoke: " profileId)
+            throw Error("Unsupported profile in reader harness: " profileId)
         }
         return BC_Config.ProfileP720A()
     }
@@ -42,10 +57,11 @@ class BC_Protocol {
         return bytes
     }
 
-    static BuildSyntheticHotSnapshot() {
+    static BuildSyntheticSnapshot() {
         return {
             PlayerAvailable: true,
             SampleMask: 0xFFFF,
+            TacticalMask: 0x07FF,
             StateFlags: 0x01F7,
             PlayerResourceKindId: 1,
             PlayerHealthCurrent: 11770,
@@ -70,12 +86,29 @@ class BC_Protocol {
             TargetResourceMax: 3500,
             TargetLevel: 46,
             TargetFlags: 0x01,
+            TargetRelationCode: 2,
+            TargetTierCode: 1,
+            TargetTaggedCode: 1,
+            TargetCallingCode: 4,
+            PlayerZoneHash16: 0x1A2B,
+            TargetZoneHash16: 0x1A2B,
+            PlayerCoordX10: 10452,
+            PlayerCoordY10: 122,
+            PlayerCoordZ10: 9817,
+            TargetCoordX10: 10608,
+            TargetCoordY10: 122,
+            TargetCoordZ10: 9956,
+            TargetRadiusQ10: 18,
             PlayerDamageEstimate: 0,
             TargetDamageEstimate: 0
         }
     }
 
-    static BuildHotPayloadBytes(snapshot) {
+    static BuildSyntheticHotSnapshot() {
+        return BC_Protocol.BuildSyntheticSnapshot()
+    }
+
+    static BuildOpsPayloadBytes(snapshot) {
         payload := BC_Protocol.GetWitnessBytes(BC_Config.PayloadBytes)
         index := 1
 
@@ -89,6 +122,24 @@ class BC_Protocol {
         index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerLevel)
         index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerCallingCode)
         index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerRoleCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetResourceKindId)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthMax)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceCurrent)
+        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceMax)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetLevel)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetFlags)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetRelationCode)
+
+        return payload
+    }
+
+    static BuildTacticalPayloadBytes(snapshot) {
+        payload := BC_Protocol.GetWitnessBytes(BC_Config.PayloadBytes)
+        index := 1
+
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.TacticalMask)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.StateFlags)
         index := BC_Protocol.PutUInt8(payload, index, snapshot.PlayerCastFlags)
         index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCastProgressQ15)
         index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerPowerAttack)
@@ -97,30 +148,55 @@ class BC_Protocol {
         index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCritSpell)
         index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerCritPower)
         index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerHit)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetResourceKindId)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthCurrent)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetHealthMax)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceCurrent)
-        index := BC_Protocol.PutUInt24(payload, index, snapshot.TargetResourceMax)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetLevel)
-        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetFlags)
-        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerDamageEstimate)
-        index := BC_Protocol.PutUInt16(payload, index, snapshot.TargetDamageEstimate)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.PlayerZoneHash16)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.TargetZoneHash16)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.PlayerCoordX10)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.PlayerCoordY10)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.PlayerCoordZ10)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.TargetCoordX10)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.TargetCoordY10)
+        index := BC_Protocol.PutInt24(payload, index, snapshot.TargetCoordZ10)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetRelationCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetTierCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetTaggedCode)
+        index := BC_Protocol.PutUInt8(payload, index, snapshot.TargetCallingCode)
+        index := BC_Protocol.PutUInt16(payload, index, snapshot.TargetRadiusQ10)
 
         return payload
+    }
+
+    static GetPayloadUsedLength(pageId) {
+        if (pageId = BC_Config.PageIdOpsOverview) {
+            return BC_Config.OpsPayloadUsedLength
+        }
+        if (pageId = BC_Config.PageIdTacticalCombat) {
+            return BC_Config.TacticalPayloadUsedLength
+        }
+        throw Error("Unsupported page id in reader harness: " pageId)
+    }
+
+    static BuildPayloadBytesForPage(snapshot, pageId) {
+        if (pageId = BC_Config.PageIdOpsOverview) {
+            return BC_Protocol.BuildOpsPayloadBytes(snapshot)
+        }
+        if (pageId = BC_Config.PageIdTacticalCombat) {
+            return BC_Protocol.BuildTacticalPayloadBytes(snapshot)
+        }
+        throw Error("Unsupported page id in reader harness: " pageId)
     }
 
     static BuildLiveFrameBytes(snapshot := 0, sequence := 42, pageId := -1) {
         profile := BC_Protocol.GetProfile()
         if !IsObject(snapshot) {
-            snapshot := BC_Protocol.BuildSyntheticHotSnapshot()
+            snapshot := BC_Protocol.BuildSyntheticSnapshot()
         }
         if (pageId < 0) {
-            pageId := BC_Config.PageIdPlayerCoreHot
+            pageId := BC_Config.PageIdOpsOverview
         }
 
         bytes := []
-        payload := BC_Protocol.BuildHotPayloadBytes(snapshot)
+        payload := BC_Protocol.BuildPayloadBytesForPage(snapshot, pageId)
+        payloadUsedLength := BC_Protocol.GetPayloadUsedLength(pageId)
         flags0 := snapshot.PlayerAvailable ? 0x01 : 0x00
 
         bytes.Push(0x42)
@@ -132,7 +208,7 @@ class BC_Protocol {
         bytes.Push(pageId)
         bytes.Push(sequence & 0xFF)
         bytes.Push(flags0)
-        bytes.Push(BC_Config.HotPayloadUsedLength)
+        bytes.Push(payloadUsedLength)
 
         headerCrc := BC_Protocol.Crc16(bytes, 1, 10)
         bytes.Push((headerCrc >> 8) & 0xFF)
@@ -178,7 +254,7 @@ class BC_Protocol {
         }
     }
 
-    static ExtractHotPage(bytes) {
+    static ExtractOpsPage(bytes) {
         payloadOffset := 13
         return {
             SampleMask: BC_Protocol.ReadUInt16(bytes, payloadOffset),
@@ -191,23 +267,43 @@ class BC_Protocol {
             PlayerLevel: bytes[payloadOffset + 17],
             PlayerCallingCode: bytes[payloadOffset + 18],
             PlayerRoleCode: bytes[payloadOffset + 19],
-            PlayerCastFlags: bytes[payloadOffset + 20],
-            PlayerCastProgressQ15: BC_Protocol.ReadUInt16(bytes, payloadOffset + 21),
-            PlayerPowerAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 23),
-            PlayerCritAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 25),
-            PlayerPowerSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 27),
-            PlayerCritSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 29),
-            PlayerCritPower: BC_Protocol.ReadUInt16(bytes, payloadOffset + 31),
-            PlayerHit: BC_Protocol.ReadUInt16(bytes, payloadOffset + 33),
-            TargetResourceKindId: bytes[payloadOffset + 35],
-            TargetHealthCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 36),
-            TargetHealthMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 39),
-            TargetResourceCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 42),
-            TargetResourceMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 45),
-            TargetLevel: bytes[payloadOffset + 48],
-            TargetFlags: bytes[payloadOffset + 49],
-            PlayerDamageEstimate: BC_Protocol.ReadUInt16(bytes, payloadOffset + 50),
-            TargetDamageEstimate: BC_Protocol.ReadUInt16(bytes, payloadOffset + 52)
+            TargetResourceKindId: bytes[payloadOffset + 20],
+            TargetHealthCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 21),
+            TargetHealthMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 24),
+            TargetResourceCurrent: BC_Protocol.ReadUInt24(bytes, payloadOffset + 27),
+            TargetResourceMax: BC_Protocol.ReadUInt24(bytes, payloadOffset + 30),
+            TargetLevel: bytes[payloadOffset + 33],
+            TargetFlags: bytes[payloadOffset + 34],
+            TargetRelationCode: bytes[payloadOffset + 35]
+        }
+    }
+
+    static ExtractTacticalPage(bytes) {
+        payloadOffset := 13
+        return {
+            TacticalMask: BC_Protocol.ReadUInt16(bytes, payloadOffset),
+            StateFlags: BC_Protocol.ReadUInt16(bytes, payloadOffset + 2),
+            PlayerCastFlags: bytes[payloadOffset + 4],
+            PlayerCastProgressQ15: BC_Protocol.ReadUInt16(bytes, payloadOffset + 5),
+            PlayerPowerAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 7),
+            PlayerCritAttack: BC_Protocol.ReadUInt16(bytes, payloadOffset + 9),
+            PlayerPowerSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 11),
+            PlayerCritSpell: BC_Protocol.ReadUInt16(bytes, payloadOffset + 13),
+            PlayerCritPower: BC_Protocol.ReadUInt16(bytes, payloadOffset + 15),
+            PlayerHit: BC_Protocol.ReadUInt16(bytes, payloadOffset + 17),
+            PlayerZoneHash16: BC_Protocol.ReadUInt16(bytes, payloadOffset + 19),
+            TargetZoneHash16: BC_Protocol.ReadUInt16(bytes, payloadOffset + 21),
+            PlayerCoordX: BC_Protocol.ReadInt24(bytes, payloadOffset + 23) / 10.0,
+            PlayerCoordY: BC_Protocol.ReadInt24(bytes, payloadOffset + 26) / 10.0,
+            PlayerCoordZ: BC_Protocol.ReadInt24(bytes, payloadOffset + 29) / 10.0,
+            TargetCoordX: BC_Protocol.ReadInt24(bytes, payloadOffset + 32) / 10.0,
+            TargetCoordY: BC_Protocol.ReadInt24(bytes, payloadOffset + 35) / 10.0,
+            TargetCoordZ: BC_Protocol.ReadInt24(bytes, payloadOffset + 38) / 10.0,
+            TargetRelationCode: bytes[payloadOffset + 41],
+            TargetTierCode: bytes[payloadOffset + 42],
+            TargetTaggedCode: bytes[payloadOffset + 43],
+            TargetCallingCode: bytes[payloadOffset + 44],
+            TargetRadius: BC_Protocol.ReadUInt16(bytes, payloadOffset + 45) / 10.0
         }
     }
 
@@ -303,12 +399,28 @@ class BC_Protocol {
         return index + 3
     }
 
+    static PutInt24(bytes, index, value) {
+        clamped := BC_Protocol.ClampSigned(value, -0x800000, 0x7FFFFF)
+        if (clamped < 0) {
+            clamped := 0x1000000 + clamped
+        }
+        return BC_Protocol.PutUInt24(bytes, index, clamped)
+    }
+
     static ReadUInt16(bytes, offset) {
         return ((bytes[offset] << 8) | bytes[offset + 1]) & 0xFFFF
     }
 
     static ReadUInt24(bytes, offset) {
         return ((bytes[offset] << 16) | (bytes[offset + 1] << 8) | bytes[offset + 2]) & 0xFFFFFF
+    }
+
+    static ReadInt24(bytes, offset) {
+        value := BC_Protocol.ReadUInt24(bytes, offset)
+        if (value & 0x800000) {
+            return value - 0x1000000
+        }
+        return value
     }
 }
 

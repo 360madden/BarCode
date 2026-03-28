@@ -1,8 +1,8 @@
 -- script name: Core/Scheduler.lua
--- version: 0.2.0
+-- version: 0.4.0
 -- purpose: Provides deterministic page and sequence scheduling for live telemetry frames.
 -- dependencies: Core/Config.lua
--- important assumptions: This pass transmits the hot player page only; cold-page rotation is reserved for the next pass.
+-- important assumptions: This pass rotates a low-rate ops overview page with a higher-rate tactical combat page.
 -- protocol version: BC-Strip/1
 -- framework module role: Core frame scheduling
 -- character count note: Character count not precomputed; measure with tooling if needed.
@@ -20,8 +20,10 @@ end
 function BarCode.Scheduler.NextFrame(state)
   local schedulerState = state or BarCode.Scheduler.NewState()
   local sequence = schedulerState.sequence or 0
+  local pagePattern = BarCode.Config.pageSchedulePattern or { BarCode.Config.pageIds.opsOverview }
+  local patternIndex = math.fmod(schedulerState.frameIndex or 0, #pagePattern) + 1
   local entry = {
-    pageId = BarCode.Config.pageIds.playerCoreHot,
+    pageId = pagePattern[patternIndex] or BarCode.Config.pageIds.opsOverview,
     sequence = sequence
   }
 

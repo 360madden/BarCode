@@ -5,7 +5,7 @@ Description = "Live BC-Strip/1 telemetry bridge for RIFT."
 Author = "360madden"
 Email = "360madden@gmail.com"
 Website = ""
-Version = "0.3.2"
+Version = "0.4.1"
 Environment = "4.4"
 RunOnStartup = {
   "Core/Config.lua",

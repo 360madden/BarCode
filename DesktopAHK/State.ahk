@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.22
-purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
+version: 0.4.1
+purpose: Tracks the latest decoded ops+tactical frames and emits merged live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
-important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
+important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object, and merges alternating ops+tactical pages into one reader-facing state.
 protocol version: BC-Strip/1
 framework module role: App-facing state
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -15,6 +15,7 @@ class BC_State {
     static LockedGeometryLoaded := false
     static Session := {}
     static History := []
+    static PageAcceptedTicks := { Ops: 0, Tactical: 0 }
 
     static GetLockedGeometry() {
         BC_State.EnsureLockedGeometryLoaded()
@@ -54,6 +55,7 @@ class BC_State {
         BC_State.Latest := {}
         BC_State.Session := BC_State.BuildEmptySession()
         BC_State.History := []
+        BC_State.PageAcceptedTicks := { Ops: 0, Tactical: 0 }
         BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonPath)
         BC_State.DeleteIfPresent(BC_Config.LiveHistoryJsonlPath)
         BC_State.DeleteIfPresent(BC_Config.LiveSummaryJsonPath)
@@ -64,7 +66,8 @@ class BC_State {
     static Update(validationResult, context := "", persistSnapshot := false) {
         details := validationResult.Details
         transport := details.HasOwnProp("Transport") ? details.Transport : {}
-        hotPage := details.HasOwnProp("HotPage") ? details.HotPage : {}
+        pageData := details.HasOwnProp("PageData") ? details.PageData : {}
+        pageName := details.HasOwnProp("PageName") ? details.PageName : ""
         image := IsObject(context) && context.HasOwnProp("Image") ? context.Image : {}
         timings := IsObject(context) && context.HasOwnProp("Timings") ? context.Timings : {}
         sampleIndex := IsObject(context) && context.HasOwnProp("SampleIndex") ? context.SampleIndex : ""
@@ -82,91 +85,77 @@ class BC_State {
             BC_State.PersistLockedGeometry()
         }
 
-        latest := {
-            TimestampUtc: A_NowUTC,
-            TimestampTickCount: A_TickCount,
-            Accepted: validationResult.IsAccepted,
-            Reason: validationResult.Reason,
-            Confidence: validationResult.Confidence,
-            Sequence: sequence,
-            PageId: transport.HasOwnProp("PageId") ? transport.PageId : "",
-            PayloadUsedLength: transport.HasOwnProp("PayloadUsedLength") ? transport.PayloadUsedLength : "",
-            SampleMask: hotPage.HasOwnProp("SampleMask") ? hotPage.SampleMask : "",
-            StateFlags: hotPage.HasOwnProp("StateFlags") ? hotPage.StateFlags : "",
-            PlayerResourceKindId: hotPage.HasOwnProp("PlayerResourceKindId") ? hotPage.PlayerResourceKindId : "",
-            PlayerResourceKindName: hotPage.HasOwnProp("PlayerResourceKindId") ? BC_State.ResourceKindName(hotPage.PlayerResourceKindId) : "",
-            PlayerHealthCurrent: hotPage.HasOwnProp("PlayerHealthCurrent") ? hotPage.PlayerHealthCurrent : "",
-            PlayerHealthMax: hotPage.HasOwnProp("PlayerHealthMax") ? hotPage.PlayerHealthMax : "",
-            PlayerResourceCurrent: hotPage.HasOwnProp("PlayerResourceCurrent") ? hotPage.PlayerResourceCurrent : "",
-            PlayerResourceMax: hotPage.HasOwnProp("PlayerResourceMax") ? hotPage.PlayerResourceMax : "",
-            PlayerCastFlags: hotPage.HasOwnProp("PlayerCastFlags") ? hotPage.PlayerCastFlags : "",
-            PlayerCastProgressQ15: hotPage.HasOwnProp("PlayerCastProgressQ15") ? hotPage.PlayerCastProgressQ15 : "",
-            PlayerLevel: hotPage.HasOwnProp("PlayerLevel") ? hotPage.PlayerLevel : "",
-            PlayerCallingCode: hotPage.HasOwnProp("PlayerCallingCode") ? hotPage.PlayerCallingCode : "",
-            PlayerCallingName: hotPage.HasOwnProp("PlayerCallingCode") ? BC_State.CallingName(hotPage.PlayerCallingCode) : "",
-            PlayerRoleCode: hotPage.HasOwnProp("PlayerRoleCode") ? hotPage.PlayerRoleCode : "",
-            PlayerRoleName: hotPage.HasOwnProp("PlayerRoleCode") ? BC_State.RoleName(hotPage.PlayerRoleCode) : "",
-            PlayerPowerAttack: hotPage.HasOwnProp("PlayerPowerAttack") ? hotPage.PlayerPowerAttack : "",
-            PlayerCritAttack: hotPage.HasOwnProp("PlayerCritAttack") ? hotPage.PlayerCritAttack : "",
-            PlayerPowerSpell: hotPage.HasOwnProp("PlayerPowerSpell") ? hotPage.PlayerPowerSpell : "",
-            PlayerCritSpell: hotPage.HasOwnProp("PlayerCritSpell") ? hotPage.PlayerCritSpell : "",
-            PlayerCritPower: hotPage.HasOwnProp("PlayerCritPower") ? hotPage.PlayerCritPower : "",
-            PlayerHit: hotPage.HasOwnProp("PlayerHit") ? hotPage.PlayerHit : "",
-            TargetResourceKindId: hotPage.HasOwnProp("TargetResourceKindId") ? hotPage.TargetResourceKindId : "",
-            TargetResourceKindName: hotPage.HasOwnProp("TargetResourceKindId") ? BC_State.ResourceKindName(hotPage.TargetResourceKindId) : "",
-            TargetHealthCurrent: hotPage.HasOwnProp("TargetHealthCurrent") ? hotPage.TargetHealthCurrent : "",
-            TargetHealthMax: hotPage.HasOwnProp("TargetHealthMax") ? hotPage.TargetHealthMax : "",
-            TargetResourceCurrent: hotPage.HasOwnProp("TargetResourceCurrent") ? hotPage.TargetResourceCurrent : "",
-            TargetResourceMax: hotPage.HasOwnProp("TargetResourceMax") ? hotPage.TargetResourceMax : "",
-            TargetLevel: hotPage.HasOwnProp("TargetLevel") ? hotPage.TargetLevel : "",
-            TargetFlags: hotPage.HasOwnProp("TargetFlags") ? hotPage.TargetFlags : "",
-            PlayerDamageEstimate: hotPage.HasOwnProp("PlayerDamageEstimate") ? hotPage.PlayerDamageEstimate : "",
-            TargetDamageEstimate: hotPage.HasOwnProp("TargetDamageEstimate") ? hotPage.TargetDamageEstimate : "",
-            SearchMode: details.HasOwnProp("SearchMode") ? details.SearchMode : "",
-            BorderErrors: details.HasOwnProp("BorderErrors") ? details.BorderErrors : "",
-            OriginX: details.HasOwnProp("OriginX") ? details.OriginX : "",
-            OriginY: details.HasOwnProp("OriginY") ? details.OriginY : "",
-            Pitch: details.HasOwnProp("Pitch") ? details.Pitch : "",
-            BandWidth: details.HasOwnProp("BandWidth") ? details.BandWidth : "",
-            BandHeight: details.HasOwnProp("BandHeight") ? details.BandHeight : "",
-            CaptureSource: IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : "",
-            CaptureRequestedSource: IsObject(image) && image.HasOwnProp("RequestedSource") ? image.RequestedSource : "",
-            CaptureResolvedSource: IsObject(image) && image.HasOwnProp("ResolvedSource") ? image.ResolvedSource : "",
-            CaptureRouteReason: IsObject(image) && image.HasOwnProp("CaptureRouteReason") ? image.CaptureRouteReason : "",
-            CaptureFallbackFrom: IsObject(image) && image.HasOwnProp("CaptureFallbackFrom") ? image.CaptureFallbackFrom : "",
-            CaptureHintMode: IsObject(image) && image.HasOwnProp("HintMode") ? image.HintMode : "",
-            CaptureHintPitch: IsObject(image) && image.HasOwnProp("HintPitch") ? image.HintPitch : "",
-            ClientX: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.x : "",
-            ClientY: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.y : "",
-            ClientWidth: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.width : "",
-            ClientHeight: IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.height : "",
-            CaptureLeft: IsObject(image) && image.HasOwnProp("SourceLeft") ? image.SourceLeft : "",
-            CaptureTop: IsObject(image) && image.HasOwnProp("SourceTop") ? image.SourceTop : "",
-            CaptureWidth: IsObject(image) && image.HasOwnProp("SourceWidth") ? image.SourceWidth : "",
-            CaptureHeight: IsObject(image) && image.HasOwnProp("SourceHeight") ? image.SourceHeight : "",
-            CaptureAttemptsText: IsObject(context) && context.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(context.CaptureAttempts, ",") : "",
-            CaptureMs: IsObject(timings) && timings.HasOwnProp("CaptureMs") ? timings.CaptureMs : "",
-            PipelineMs: IsObject(timings) && timings.HasOwnProp("PipelineMs") ? timings.PipelineMs : "",
-            AttemptCount: IsObject(timings) && timings.HasOwnProp("AttemptCount") ? timings.AttemptCount : "",
-            SampleIndex: sampleIndex,
-            SessionStartedUtc: sessionStats.SessionStartedUtc,
-            SessionSampleCount: sessionStats.SampleCount,
-            SessionAcceptedCount: sessionStats.AcceptedCount,
-            SessionRejectedCount: sessionStats.RejectedCount,
-            AcceptedStreak: sessionStats.AcceptedStreak,
-            RejectedStreak: sessionStats.RejectedStreak,
-            LastAcceptedTimestampUtc: sessionStats.LastAcceptedTimestampUtc,
-            LastRejectedTimestampUtc: sessionStats.LastRejectedTimestampUtc,
-            LastAcceptedSequence: sessionStats.LastAcceptedSequence,
-            SequenceAdvance: sessionStats.SequenceAdvance,
-            SequenceChanged: sessionStats.SequenceChanged,
-            FreshFrame: sessionStats.FreshFrame,
-            SequenceRepeatedCount: sessionStats.SequenceRepeatedCount,
-            SequenceWrapCount: sessionStats.SequenceWrapCount,
-            WindowTitle: BC_State.ResolveWindowTitle(context, image),
-            ProcessName: BC_State.ResolveProcessName(context, image),
-            Details: details
+        latest := {}
+        for key, value in BC_State.Latest.OwnProps() {
+            latest.%key% := value
         }
+
+        latest.TimestampUtc := A_NowUTC
+        latest.TimestampTickCount := A_TickCount
+        latest.Accepted := validationResult.IsAccepted
+        latest.Reason := validationResult.Reason
+        latest.Confidence := validationResult.Confidence
+        latest.Sequence := sequence
+        latest.PageId := transport.HasOwnProp("PageId") ? transport.PageId : ""
+        latest.PageName := pageName
+        latest.PayloadUsedLength := transport.HasOwnProp("PayloadUsedLength") ? transport.PayloadUsedLength : ""
+        latest.SearchMode := details.HasOwnProp("SearchMode") ? details.SearchMode : ""
+        latest.BorderErrors := details.HasOwnProp("BorderErrors") ? details.BorderErrors : ""
+        latest.OriginX := details.HasOwnProp("OriginX") ? details.OriginX : ""
+        latest.OriginY := details.HasOwnProp("OriginY") ? details.OriginY : ""
+        latest.Pitch := details.HasOwnProp("Pitch") ? details.Pitch : ""
+        latest.BandWidth := details.HasOwnProp("BandWidth") ? details.BandWidth : ""
+        latest.BandHeight := details.HasOwnProp("BandHeight") ? details.BandHeight : ""
+        latest.CaptureSource := IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : ""
+        latest.CaptureRequestedSource := IsObject(image) && image.HasOwnProp("RequestedSource") ? image.RequestedSource : ""
+        latest.CaptureResolvedSource := IsObject(image) && image.HasOwnProp("ResolvedSource") ? image.ResolvedSource : ""
+        latest.CaptureRouteReason := IsObject(image) && image.HasOwnProp("CaptureRouteReason") ? image.CaptureRouteReason : ""
+        latest.CaptureFallbackFrom := IsObject(image) && image.HasOwnProp("CaptureFallbackFrom") ? image.CaptureFallbackFrom : ""
+        latest.CaptureHintMode := IsObject(image) && image.HasOwnProp("HintMode") ? image.HintMode : ""
+        latest.CaptureHintPitch := IsObject(image) && image.HasOwnProp("HintPitch") ? image.HintPitch : ""
+        latest.ClientX := IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.x : ""
+        latest.ClientY := IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.y : ""
+        latest.ClientWidth := IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.width : ""
+        latest.ClientHeight := IsObject(image) && image.HasOwnProp("ClientRect") ? image.ClientRect.height : ""
+        latest.CaptureLeft := IsObject(image) && image.HasOwnProp("SourceLeft") ? image.SourceLeft : ""
+        latest.CaptureTop := IsObject(image) && image.HasOwnProp("SourceTop") ? image.SourceTop : ""
+        latest.CaptureWidth := IsObject(image) && image.HasOwnProp("SourceWidth") ? image.SourceWidth : ""
+        latest.CaptureHeight := IsObject(image) && image.HasOwnProp("SourceHeight") ? image.SourceHeight : ""
+        latest.CaptureAttemptsText := IsObject(context) && context.HasOwnProp("CaptureAttempts") ? BC_Debug.Join(context.CaptureAttempts, ",") : ""
+        latest.CaptureMs := IsObject(timings) && timings.HasOwnProp("CaptureMs") ? timings.CaptureMs : ""
+        latest.PipelineMs := IsObject(timings) && timings.HasOwnProp("PipelineMs") ? timings.PipelineMs : ""
+        latest.AttemptCount := IsObject(timings) && timings.HasOwnProp("AttemptCount") ? timings.AttemptCount : ""
+        latest.SampleIndex := sampleIndex
+        latest.SessionStartedUtc := sessionStats.SessionStartedUtc
+        latest.SessionSampleCount := sessionStats.SampleCount
+        latest.SessionAcceptedCount := sessionStats.AcceptedCount
+        latest.SessionRejectedCount := sessionStats.RejectedCount
+        latest.AcceptedStreak := sessionStats.AcceptedStreak
+        latest.RejectedStreak := sessionStats.RejectedStreak
+        latest.LastAcceptedTimestampUtc := sessionStats.LastAcceptedTimestampUtc
+        latest.LastRejectedTimestampUtc := sessionStats.LastRejectedTimestampUtc
+        latest.LastAcceptedSequence := sessionStats.LastAcceptedSequence
+        latest.SequenceAdvance := sessionStats.SequenceAdvance
+        latest.SequenceChanged := sessionStats.SequenceChanged
+        latest.FreshFrame := sessionStats.FreshFrame
+        latest.SequenceRepeatedCount := sessionStats.SequenceRepeatedCount
+        latest.SequenceWrapCount := sessionStats.SequenceWrapCount
+        latest.WindowTitle := BC_State.ResolveWindowTitle(context, image)
+        latest.ProcessName := BC_State.ResolveProcessName(context, image)
+        latest.Details := details
+
+        if (validationResult.IsAccepted && IsObject(pageData)) {
+            if (pageName = "ops-overview") {
+                BC_State.PageAcceptedTicks.Ops := A_TickCount
+                BC_State.ApplyOpsPage(latest, pageData)
+            } else if (pageName = "tactical-combat") {
+                BC_State.PageAcceptedTicks.Tactical := A_TickCount
+                BC_State.ApplyTacticalPage(latest, pageData)
+            }
+        }
+
+        latest.OpsPageAgeMs := BC_State.PageAcceptedTicks.Ops > 0 ? (A_TickCount - BC_State.PageAcceptedTicks.Ops) : ""
+        latest.TacticalPageAgeMs := BC_State.PageAcceptedTicks.Tactical > 0 ? (A_TickCount - BC_State.PageAcceptedTicks.Tactical) : ""
 
         BC_State.Latest := latest
         if (persistSnapshot) {
@@ -186,9 +175,65 @@ class BC_State {
         }
     }
 
+    static ApplyOpsPage(latest, pageData) {
+        latest.SampleMask := BC_State.GetValue(pageData, "SampleMask", BC_State.GetValue(latest, "SampleMask", ""))
+        latest.StateFlags := BC_State.GetValue(pageData, "StateFlags", BC_State.GetValue(latest, "StateFlags", ""))
+        latest.PlayerResourceKindId := BC_State.GetValue(pageData, "PlayerResourceKindId", BC_State.GetValue(latest, "PlayerResourceKindId", ""))
+        latest.PlayerResourceKindName := BC_State.ResourceKindName(latest.PlayerResourceKindId)
+        latest.PlayerHealthCurrent := BC_State.GetValue(pageData, "PlayerHealthCurrent", BC_State.GetValue(latest, "PlayerHealthCurrent", ""))
+        latest.PlayerHealthMax := BC_State.GetValue(pageData, "PlayerHealthMax", BC_State.GetValue(latest, "PlayerHealthMax", ""))
+        latest.PlayerResourceCurrent := BC_State.GetValue(pageData, "PlayerResourceCurrent", BC_State.GetValue(latest, "PlayerResourceCurrent", ""))
+        latest.PlayerResourceMax := BC_State.GetValue(pageData, "PlayerResourceMax", BC_State.GetValue(latest, "PlayerResourceMax", ""))
+        latest.PlayerLevel := BC_State.GetValue(pageData, "PlayerLevel", BC_State.GetValue(latest, "PlayerLevel", ""))
+        latest.PlayerCallingCode := BC_State.GetValue(pageData, "PlayerCallingCode", BC_State.GetValue(latest, "PlayerCallingCode", ""))
+        latest.PlayerCallingName := BC_State.CallingName(latest.PlayerCallingCode)
+        latest.PlayerRoleCode := BC_State.GetValue(pageData, "PlayerRoleCode", BC_State.GetValue(latest, "PlayerRoleCode", ""))
+        latest.PlayerRoleName := BC_State.RoleName(latest.PlayerRoleCode)
+        latest.TargetResourceKindId := BC_State.GetValue(pageData, "TargetResourceKindId", BC_State.GetValue(latest, "TargetResourceKindId", ""))
+        latest.TargetResourceKindName := BC_State.ResourceKindName(latest.TargetResourceKindId)
+        latest.TargetHealthCurrent := BC_State.GetValue(pageData, "TargetHealthCurrent", BC_State.GetValue(latest, "TargetHealthCurrent", ""))
+        latest.TargetHealthMax := BC_State.GetValue(pageData, "TargetHealthMax", BC_State.GetValue(latest, "TargetHealthMax", ""))
+        latest.TargetResourceCurrent := BC_State.GetValue(pageData, "TargetResourceCurrent", BC_State.GetValue(latest, "TargetResourceCurrent", ""))
+        latest.TargetResourceMax := BC_State.GetValue(pageData, "TargetResourceMax", BC_State.GetValue(latest, "TargetResourceMax", ""))
+        latest.TargetLevel := BC_State.GetValue(pageData, "TargetLevel", BC_State.GetValue(latest, "TargetLevel", ""))
+        latest.TargetFlags := BC_State.GetValue(pageData, "TargetFlags", BC_State.GetValue(latest, "TargetFlags", ""))
+        latest.TargetRelationCode := BC_State.GetValue(pageData, "TargetRelationCode", BC_State.GetValue(latest, "TargetRelationCode", ""))
+        latest.TargetRelationName := BC_State.RelationName(latest.TargetRelationCode)
+    }
+
+    static ApplyTacticalPage(latest, pageData) {
+        latest.TacticalMask := BC_State.GetValue(pageData, "TacticalMask", BC_State.GetValue(latest, "TacticalMask", ""))
+        latest.StateFlags := BC_State.GetValue(pageData, "StateFlags", BC_State.GetValue(latest, "StateFlags", ""))
+        latest.PlayerCastFlags := BC_State.GetValue(pageData, "PlayerCastFlags", BC_State.GetValue(latest, "PlayerCastFlags", ""))
+        latest.PlayerCastProgressQ15 := BC_State.GetValue(pageData, "PlayerCastProgressQ15", BC_State.GetValue(latest, "PlayerCastProgressQ15", ""))
+        latest.PlayerPowerAttack := BC_State.GetValue(pageData, "PlayerPowerAttack", BC_State.GetValue(latest, "PlayerPowerAttack", ""))
+        latest.PlayerCritAttack := BC_State.GetValue(pageData, "PlayerCritAttack", BC_State.GetValue(latest, "PlayerCritAttack", ""))
+        latest.PlayerPowerSpell := BC_State.GetValue(pageData, "PlayerPowerSpell", BC_State.GetValue(latest, "PlayerPowerSpell", ""))
+        latest.PlayerCritSpell := BC_State.GetValue(pageData, "PlayerCritSpell", BC_State.GetValue(latest, "PlayerCritSpell", ""))
+        latest.PlayerCritPower := BC_State.GetValue(pageData, "PlayerCritPower", BC_State.GetValue(latest, "PlayerCritPower", ""))
+        latest.PlayerHit := BC_State.GetValue(pageData, "PlayerHit", BC_State.GetValue(latest, "PlayerHit", ""))
+        latest.PlayerZoneHash16 := BC_State.GetValue(pageData, "PlayerZoneHash16", BC_State.GetValue(latest, "PlayerZoneHash16", ""))
+        latest.TargetZoneHash16 := BC_State.GetValue(pageData, "TargetZoneHash16", BC_State.GetValue(latest, "TargetZoneHash16", ""))
+        latest.PlayerCoordX := BC_State.GetValue(pageData, "PlayerCoordX", BC_State.GetValue(latest, "PlayerCoordX", ""))
+        latest.PlayerCoordY := BC_State.GetValue(pageData, "PlayerCoordY", BC_State.GetValue(latest, "PlayerCoordY", ""))
+        latest.PlayerCoordZ := BC_State.GetValue(pageData, "PlayerCoordZ", BC_State.GetValue(latest, "PlayerCoordZ", ""))
+        latest.TargetCoordX := BC_State.GetValue(pageData, "TargetCoordX", BC_State.GetValue(latest, "TargetCoordX", ""))
+        latest.TargetCoordY := BC_State.GetValue(pageData, "TargetCoordY", BC_State.GetValue(latest, "TargetCoordY", ""))
+        latest.TargetCoordZ := BC_State.GetValue(pageData, "TargetCoordZ", BC_State.GetValue(latest, "TargetCoordZ", ""))
+        latest.TargetRelationCode := BC_State.GetValue(pageData, "TargetRelationCode", BC_State.GetValue(latest, "TargetRelationCode", ""))
+        latest.TargetRelationName := BC_State.RelationName(latest.TargetRelationCode)
+        latest.TargetTierCode := BC_State.GetValue(pageData, "TargetTierCode", BC_State.GetValue(latest, "TargetTierCode", ""))
+        latest.TargetTierName := BC_State.TierName(latest.TargetTierCode)
+        latest.TargetTaggedCode := BC_State.GetValue(pageData, "TargetTaggedCode", BC_State.GetValue(latest, "TargetTaggedCode", ""))
+        latest.TargetTaggedName := BC_State.TaggedName(latest.TargetTaggedCode)
+        latest.TargetCallingCode := BC_State.GetValue(pageData, "TargetCallingCode", BC_State.GetValue(latest, "TargetCallingCode", ""))
+        latest.TargetCallingName := BC_State.CallingName(latest.TargetCallingCode)
+        latest.TargetRadius := BC_State.GetValue(pageData, "TargetRadius", BC_State.GetValue(latest, "TargetRadius", ""))
+    }
+
     static BuildSnapshot() {
         latest := BC_State.Latest
-        return {
+        snapshot := {
             timestampUtc: BC_State.GetValue(latest, "TimestampUtc", ""),
             timestampTickCount: BC_State.GetValue(latest, "TimestampTickCount", ""),
             accepted: BC_State.GetValue(latest, "Accepted", false),
@@ -196,8 +241,10 @@ class BC_State {
             confidence: BC_State.GetValue(latest, "Confidence", ""),
             sequence: BC_State.GetValue(latest, "Sequence", ""),
             pageId: BC_State.GetValue(latest, "PageId", ""),
+            pageName: BC_State.GetValue(latest, "PageName", ""),
             payloadUsedLength: BC_State.GetValue(latest, "PayloadUsedLength", ""),
             sampleMask: BC_State.GetValue(latest, "SampleMask", ""),
+            tacticalMask: BC_State.GetValue(latest, "TacticalMask", ""),
             stateFlags: BC_State.GetValue(latest, "StateFlags", ""),
             playerResourceKindId: BC_State.GetValue(latest, "PlayerResourceKindId", ""),
             playerResourceKindName: BC_State.GetValue(latest, "PlayerResourceKindName", ""),
@@ -226,6 +273,23 @@ class BC_State {
             targetResourceMax: BC_State.GetValue(latest, "TargetResourceMax", ""),
             targetLevel: BC_State.GetValue(latest, "TargetLevel", ""),
             targetFlags: BC_State.GetValue(latest, "TargetFlags", ""),
+            targetRelationCode: BC_State.GetValue(latest, "TargetRelationCode", ""),
+            targetRelationName: BC_State.GetValue(latest, "TargetRelationName", ""),
+            targetTierCode: BC_State.GetValue(latest, "TargetTierCode", ""),
+            targetTierName: BC_State.GetValue(latest, "TargetTierName", ""),
+            targetTaggedCode: BC_State.GetValue(latest, "TargetTaggedCode", ""),
+            targetTaggedName: BC_State.GetValue(latest, "TargetTaggedName", ""),
+            targetCallingCode: BC_State.GetValue(latest, "TargetCallingCode", ""),
+            targetCallingName: BC_State.GetValue(latest, "TargetCallingName", ""),
+            targetRadius: BC_State.GetValue(latest, "TargetRadius", ""),
+            playerZoneHash16: BC_State.GetValue(latest, "PlayerZoneHash16", ""),
+            targetZoneHash16: BC_State.GetValue(latest, "TargetZoneHash16", ""),
+            playerCoordX: BC_State.GetValue(latest, "PlayerCoordX", ""),
+            playerCoordY: BC_State.GetValue(latest, "PlayerCoordY", ""),
+            playerCoordZ: BC_State.GetValue(latest, "PlayerCoordZ", ""),
+            targetCoordX: BC_State.GetValue(latest, "TargetCoordX", ""),
+            targetCoordY: BC_State.GetValue(latest, "TargetCoordY", ""),
+            targetCoordZ: BC_State.GetValue(latest, "TargetCoordZ", ""),
             playerDamageEstimate: BC_State.GetValue(latest, "PlayerDamageEstimate", ""),
             targetDamageEstimate: BC_State.GetValue(latest, "TargetDamageEstimate", ""),
             searchMode: BC_State.GetValue(latest, "SearchMode", ""),
@@ -269,9 +333,16 @@ class BC_State {
             freshFrame: BC_State.GetValue(latest, "FreshFrame", false),
             sequenceRepeatedCount: BC_State.GetValue(latest, "SequenceRepeatedCount", ""),
             sequenceWrapCount: BC_State.GetValue(latest, "SequenceWrapCount", ""),
+            opsPageAgeMs: BC_State.GetValue(latest, "OpsPageAgeMs", ""),
+            tacticalPageAgeMs: BC_State.GetValue(latest, "TacticalPageAgeMs", ""),
             windowTitle: BC_State.GetValue(latest, "WindowTitle", ""),
             processName: BC_State.GetValue(latest, "ProcessName", "")
         }
+        snapshot.sameZone := BC_State.SameZone(snapshot)
+        snapshot.distanceXZ := BC_State.DistanceXZ(snapshot)
+        snapshot.distanceBucket := BC_State.DistanceBucket(snapshot.distanceXZ)
+        snapshot.distanceBucketText := BC_State.DistanceBucketName(snapshot.distanceBucket)
+        return snapshot
     }
 
     static BuildSnapshotJson(snapshot, pretty := true) {
@@ -282,8 +353,10 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("confidence", snapshot.confidence))
         fields.Push(BC_State.JsonNumberField("sequence", snapshot.sequence))
         fields.Push(BC_State.JsonNumberField("pageId", snapshot.pageId))
+        fields.Push(BC_State.JsonStringField("pageName", snapshot.pageName))
         fields.Push(BC_State.JsonNumberField("payloadUsedLength", snapshot.payloadUsedLength))
         fields.Push(BC_State.JsonNumberField("sampleMask", snapshot.sampleMask))
+        fields.Push(BC_State.JsonNumberField("tacticalMask", snapshot.tacticalMask))
         fields.Push(BC_State.JsonNumberField("stateFlags", snapshot.stateFlags))
         fields.Push(BC_State.JsonNumberField("playerResourceKindId", snapshot.playerResourceKindId))
         fields.Push(BC_State.JsonStringField("playerResourceKindName", snapshot.playerResourceKindName))
@@ -312,6 +385,26 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("targetResourceMax", snapshot.targetResourceMax))
         fields.Push(BC_State.JsonNumberField("targetLevel", snapshot.targetLevel))
         fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
+        fields.Push(BC_State.JsonNumberField("targetRelationCode", snapshot.targetRelationCode))
+        fields.Push(BC_State.JsonStringField("targetRelationName", snapshot.targetRelationName))
+        fields.Push(BC_State.JsonNumberField("targetTierCode", snapshot.targetTierCode))
+        fields.Push(BC_State.JsonStringField("targetTierName", snapshot.targetTierName))
+        fields.Push(BC_State.JsonNumberField("targetTaggedCode", snapshot.targetTaggedCode))
+        fields.Push(BC_State.JsonStringField("targetTaggedName", snapshot.targetTaggedName))
+        fields.Push(BC_State.JsonNumberField("targetCallingCode", snapshot.targetCallingCode))
+        fields.Push(BC_State.JsonStringField("targetCallingName", snapshot.targetCallingName))
+        fields.Push(BC_State.JsonNumberField("targetRadius", snapshot.targetRadius))
+        fields.Push(BC_State.JsonNumberField("playerZoneHash16", snapshot.playerZoneHash16))
+        fields.Push(BC_State.JsonNumberField("targetZoneHash16", snapshot.targetZoneHash16))
+        fields.Push(BC_State.JsonNumberField("playerCoordX", snapshot.playerCoordX))
+        fields.Push(BC_State.JsonNumberField("playerCoordY", snapshot.playerCoordY))
+        fields.Push(BC_State.JsonNumberField("playerCoordZ", snapshot.playerCoordZ))
+        fields.Push(BC_State.JsonNumberField("targetCoordX", snapshot.targetCoordX))
+        fields.Push(BC_State.JsonNumberField("targetCoordY", snapshot.targetCoordY))
+        fields.Push(BC_State.JsonNumberField("targetCoordZ", snapshot.targetCoordZ))
+        fields.Push(BC_State.JsonBoolField("sameZone", snapshot.sameZone))
+        fields.Push(BC_State.JsonNumberField("distanceXZ", snapshot.distanceXZ))
+        fields.Push(BC_State.JsonStringField("distanceBucketText", snapshot.distanceBucketText))
         fields.Push(BC_State.JsonNumberField("playerDamageEstimate", snapshot.playerDamageEstimate))
         fields.Push(BC_State.JsonNumberField("targetDamageEstimate", snapshot.targetDamageEstimate))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
@@ -355,6 +448,8 @@ class BC_State {
         fields.Push(BC_State.JsonBoolField("freshFrame", snapshot.freshFrame))
         fields.Push(BC_State.JsonNumberField("sequenceRepeatedCount", snapshot.sequenceRepeatedCount))
         fields.Push(BC_State.JsonNumberField("sequenceWrapCount", snapshot.sequenceWrapCount))
+        fields.Push(BC_State.JsonNumberField("opsPageAgeMs", snapshot.opsPageAgeMs))
+        fields.Push(BC_State.JsonNumberField("tacticalPageAgeMs", snapshot.tacticalPageAgeMs))
         fields.Push(BC_State.JsonStringField("windowTitle", snapshot.windowTitle))
         fields.Push(BC_State.JsonStringField("processName", snapshot.processName))
         if (pretty) {
@@ -377,6 +472,7 @@ class BC_State {
         lines.Push("Confidence: " BC_State.NumberText(snapshot.confidence))
         lines.Push("Sequence: " BC_State.NumberText(snapshot.sequence))
         lines.Push("PageId: " BC_State.NumberText(snapshot.pageId))
+        lines.Push("PageName: " snapshot.pageName)
         lines.Push("PlayerHealth: " BC_State.PairText(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
         lines.Push("PlayerResource: " BC_State.PairText(snapshot.playerResourceCurrent, snapshot.playerResourceMax))
         lines.Push("PlayerResourceKind: " snapshot.playerResourceKindName)
@@ -392,6 +488,18 @@ class BC_State {
         lines.Push("TargetResourceKind: " snapshot.targetResourceKindName)
         lines.Push("TargetLevel: " BC_State.NumberText(snapshot.targetLevel))
         lines.Push("TargetFlags: " BC_State.NumberText(snapshot.targetFlags))
+        lines.Push("TargetRelation: " BC_State.DefaultText(snapshot.targetRelationName, "unknown") " (" BC_State.NumberText(snapshot.targetRelationCode) ")")
+        lines.Push("TargetTier: " BC_State.DefaultText(snapshot.targetTierName, "normal") " (" BC_State.NumberText(snapshot.targetTierCode) ")")
+        lines.Push("TargetTagged: " BC_State.DefaultText(snapshot.targetTaggedName, "none") " (" BC_State.NumberText(snapshot.targetTaggedCode) ")")
+        lines.Push("TargetCalling: " BC_State.DefaultText(snapshot.targetCallingName, "unknown") " (" BC_State.NumberText(snapshot.targetCallingCode) ")")
+        lines.Push("TargetRadius: " BC_State.NumberText(snapshot.targetRadius))
+        lines.Push("PlayerZoneHash16: " BC_State.HexText(snapshot.playerZoneHash16, 4))
+        lines.Push("TargetZoneHash16: " BC_State.HexText(snapshot.targetZoneHash16, 4))
+        lines.Push("PlayerCoord: " BC_State.NumberText(snapshot.playerCoordX) ", " BC_State.NumberText(snapshot.playerCoordY) ", " BC_State.NumberText(snapshot.playerCoordZ))
+        lines.Push("TargetCoord: " BC_State.NumberText(snapshot.targetCoordX) ", " BC_State.NumberText(snapshot.targetCoordY) ", " BC_State.NumberText(snapshot.targetCoordZ))
+        lines.Push("SameZone: " BC_State.BoolText(snapshot.sameZone))
+        lines.Push("DistanceXZ: " BC_State.NumberText(snapshot.distanceXZ))
+        lines.Push("DistanceBucket: " snapshot.distanceBucketText)
         lines.Push("PlayerDamageEstimate: " BC_State.NumberText(snapshot.playerDamageEstimate))
         lines.Push("TargetDamageEstimate: " BC_State.NumberText(snapshot.targetDamageEstimate))
         lines.Push("SearchMode: " snapshot.searchMode)
@@ -425,6 +533,8 @@ class BC_State {
         lines.Push("FreshFrame: " BC_State.BoolText(snapshot.freshFrame))
         lines.Push("SequenceRepeatedCount: " BC_State.NumberText(snapshot.sequenceRepeatedCount))
         lines.Push("SequenceWrapCount: " BC_State.NumberText(snapshot.sequenceWrapCount))
+        lines.Push("OpsPageAgeMs: " BC_State.NumberText(snapshot.opsPageAgeMs))
+        lines.Push("TacticalPageAgeMs: " BC_State.NumberText(snapshot.tacticalPageAgeMs))
         lines.Push("WindowTitle: " snapshot.windowTitle)
         lines.Push("ProcessName: " snapshot.processName)
         return BC_Debug.Join(lines, "`r`n")
@@ -454,14 +564,7 @@ class BC_State {
             " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ")"
         )
         lines.Push("Player state: " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot)))
-        lines.Push(
-            "Player offense: atk " BC_State.DefaultText(snapshot.playerPowerAttack, "0")
-            " | critAtk " BC_State.DefaultText(snapshot.playerCritAttack, "0")
-            " | spell " BC_State.DefaultText(snapshot.playerPowerSpell, "0")
-            " | critSpell " BC_State.DefaultText(snapshot.playerCritSpell, "0")
-            " | critPower " BC_State.DefaultText(snapshot.playerCritPower, "0")
-            " | hit " BC_State.DefaultText(snapshot.playerHit, "0")
-        )
+        lines.Push("Ops page age: " BC_State.DefaultText(snapshot.opsPageAgeMs, "-") " ms | Tactical page age: " BC_State.DefaultText(snapshot.tacticalPageAgeMs, "-") " ms")
 
         if BC_State.HasTarget(snapshot) {
             lines.Push(
@@ -471,11 +574,16 @@ class BC_State {
                 " | " BC_State.DefaultText(snapshot.targetResourceKindName, "none")
                 " " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax)
                 " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ")"
+                " | " BC_State.DefaultText(snapshot.targetRelationName, "unknown")
                 " | flags " BC_State.HexText(snapshot.targetFlags, 2)
             )
             lines.Push("Target state: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
-            lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
-            lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot))
+            lines.Push(
+                "Tactical: dist " BC_State.DefaultText(snapshot.distanceXZ, "-")
+                " | bucket " BC_State.DefaultText(snapshot.distanceBucketText, "-")
+                " | sameZone " BC_State.BoolText(snapshot.sameZone)
+                " | targetCalling " BC_State.DefaultText(snapshot.targetCallingName, "unknown")
+            )
         } else {
             lines.Push("Target: none")
         }
@@ -514,6 +622,7 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("confidence", snapshot.confidence))
         fields.Push(BC_State.JsonNumberField("sampleAgeMs", BC_State.AgeMs(snapshot)))
         fields.Push(BC_State.JsonNumberField("sequence", snapshot.sequence))
+        fields.Push(BC_State.JsonStringField("pageName", snapshot.pageName))
         fields.Push(BC_State.JsonBoolField("targetPresent", BC_State.HasTarget(snapshot)))
         fields.Push(BC_State.JsonStringField("playerStateText", BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))))
         fields.Push(BC_State.JsonStringField("targetStateText", BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot))))
@@ -544,6 +653,13 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("targetResourceMax", snapshot.targetResourceMax))
         fields.Push(BC_State.JsonNumberField("targetResourcePercent", BC_State.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax)))
         fields.Push(BC_State.JsonNumberField("targetFlags", snapshot.targetFlags))
+        fields.Push(BC_State.JsonStringField("targetRelationName", snapshot.targetRelationName))
+        fields.Push(BC_State.JsonStringField("targetTierName", snapshot.targetTierName))
+        fields.Push(BC_State.JsonStringField("targetTaggedName", snapshot.targetTaggedName))
+        fields.Push(BC_State.JsonStringField("targetCallingName", snapshot.targetCallingName))
+        fields.Push(BC_State.JsonBoolField("sameZone", snapshot.sameZone))
+        fields.Push(BC_State.JsonNumberField("distanceXZ", snapshot.distanceXZ))
+        fields.Push(BC_State.JsonStringField("distanceBucketText", snapshot.distanceBucketText))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
         fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
         fields.Push(BC_State.JsonStringField("captureRouteReason", snapshot.captureRouteReason))
@@ -564,6 +680,8 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("sessionRejectedCount", snapshot.sessionRejectedCount))
         fields.Push(BC_State.JsonNumberField("acceptedStreak", snapshot.acceptedStreak))
         fields.Push(BC_State.JsonNumberField("rejectedStreak", snapshot.rejectedStreak))
+        fields.Push(BC_State.JsonNumberField("opsPageAgeMs", snapshot.opsPageAgeMs))
+        fields.Push(BC_State.JsonNumberField("tacticalPageAgeMs", snapshot.tacticalPageAgeMs))
         if (pretty) {
             return "{`r`n  " BC_Debug.Join(fields, ",`r`n  ") "`r`n}"
         }
@@ -670,6 +788,15 @@ class BC_State {
         if BC_State.HasBit(targetFlags, 0x02) {
             tags.Push("pet")
         }
+        if (snapshot.targetRelationName != "" && snapshot.targetRelationName != "unknown") {
+            tags.Push(snapshot.targetRelationName)
+        }
+        if (snapshot.targetTierName != "" && snapshot.targetTierName != "normal") {
+            tags.Push(snapshot.targetTierName)
+        }
+        if (snapshot.targetTaggedName != "" && snapshot.targetTaggedName != "none") {
+            tags.Push("tag:" snapshot.targetTaggedName)
+        }
 
         return tags
     }
@@ -709,6 +836,11 @@ class BC_State {
             )
         }
 
+        distanceText := ""
+        if (snapshot.distanceXZ != "") {
+            distanceText := " | dist " snapshot.distanceXZ " (" BC_State.DefaultText(snapshot.distanceBucketText, "?") ")"
+        }
+
         return (
             "HP "
             BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
@@ -717,6 +849,7 @@ class BC_State {
             " | "
             resourceText
             levelText
+            distanceText
         )
     }
 
@@ -1051,6 +1184,94 @@ class BC_State {
         }
         if (code = 4) {
             return "support"
+        }
+        return "unknown"
+    }
+
+    static RelationName(code) {
+        if (code = 1) {
+            return "friendly"
+        }
+        if (code = 2) {
+            return "hostile"
+        }
+        if (code = 3) {
+            return "neutral"
+        }
+        return "unknown"
+    }
+
+    static TierName(code) {
+        if (code = 1) {
+            return "group"
+        }
+        if (code = 2) {
+            return "raid"
+        }
+        return "normal"
+    }
+
+    static TaggedName(code) {
+        if (code = 1) {
+            return "self"
+        }
+        if (code = 2) {
+            return "other"
+        }
+        return "none"
+    }
+
+    static SameZone(snapshot) {
+        return snapshot.playerZoneHash16 != "" && snapshot.targetZoneHash16 != "" && snapshot.playerZoneHash16 != 0 && snapshot.playerZoneHash16 = snapshot.targetZoneHash16
+    }
+
+    static DistanceXZ(snapshot) {
+        if !BC_State.SameZone(snapshot) {
+            return ""
+        }
+        if (snapshot.playerCoordX = "" || snapshot.playerCoordZ = "" || snapshot.targetCoordX = "" || snapshot.targetCoordZ = "") {
+            return ""
+        }
+
+        dx := Number(snapshot.targetCoordX) - Number(snapshot.playerCoordX)
+        dz := Number(snapshot.targetCoordZ) - Number(snapshot.playerCoordZ)
+        return Round(Sqrt((dx * dx) + (dz * dz)), 1)
+    }
+
+    static DistanceBucket(distance) {
+        if (distance = "") {
+            return 0
+        }
+        if (distance <= 4.0) {
+            return 1
+        }
+        if (distance <= 10.0) {
+            return 2
+        }
+        if (distance <= 20.0) {
+            return 3
+        }
+        if (distance <= 35.0) {
+            return 4
+        }
+        return 5
+    }
+
+    static DistanceBucketName(bucket) {
+        if (bucket = 1) {
+            return "melee"
+        }
+        if (bucket = 2) {
+            return "close"
+        }
+        if (bucket = 3) {
+            return "near"
+        }
+        if (bucket = 4) {
+            return "mid"
+        }
+        if (bucket = 5) {
+            return "far"
         }
         return "unknown"
     }

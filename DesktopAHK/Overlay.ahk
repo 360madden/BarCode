@@ -1,7 +1,7 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.23
-purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
+version: 0.4.1
+purpose: Provides ops, tactical, and compact HUD reader surfaces for synthetic, BMP, and live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
 protocol version: BC-Strip/1
@@ -81,7 +81,7 @@ class BC_Overlay {
 
     static EnsureWindow(title := "BarCode Reader Dashboard") {
         if IsObject(BC_Overlay.Window) {
-            if (BC_Overlay.SurfaceMode = "dashboard" && BC_Overlay.ActiveWindowNoActivate = BC_Overlay.WindowNoActivate) {
+            if ((BC_Overlay.SurfaceMode = "dashboard" || BC_Overlay.SurfaceMode = "tactical") && BC_Overlay.ActiveWindowNoActivate = BC_Overlay.WindowNoActivate) {
                 try {
                     BC_Overlay.Window.Title := title
                     BC_Overlay.WindowShowOptions := "w1152 h864"
@@ -93,7 +93,6 @@ class BC_Overlay {
             BC_Overlay.DiscardWindow()
         }
 
-        BC_Overlay.SurfaceMode := "dashboard"
         options := BC_Overlay.WindowNoActivate
             ? "+AlwaysOnTop +ToolWindow +MinSize1152x864 +E0x08000000"
             : "+AlwaysOnTop +ToolWindow +MinSize1152x864"
@@ -875,6 +874,25 @@ class BC_Overlay {
     }
 
     static FormatSessionText(snapshot) {
+        if !BC_Overlay.IsTacticalSurface() {
+            return (
+                "Session " BC_Overlay.SafeText(snapshot.sessionSampleCount, "0")
+                " samples | accepted " BC_Overlay.SafeText(snapshot.sessionAcceptedCount, "0")
+                " | rejected " BC_Overlay.SafeText(snapshot.sessionRejectedCount, "0")
+                " | streak " BC_Overlay.SafeText(snapshot.acceptedStreak, "0")
+                "/" BC_Overlay.SafeText(snapshot.rejectedStreak, "0")
+                " | repeats " BC_Overlay.SafeText(snapshot.sequenceRepeatedCount, "0")
+                " | wraps " BC_Overlay.SafeText(snapshot.sequenceWrapCount, "0")
+                "`r`nPages last=" BC_Overlay.SafeText(snapshot.pageName, "-")
+                " | ops " BC_Overlay.SafeText(snapshot.opsPageAgeMs, "-") " ms"
+                " | tactical " BC_Overlay.SafeText(snapshot.tacticalPageAgeMs, "-") " ms"
+                "`r`nTarget " (BC_State.HasTarget(snapshot) ? "present" : "none")
+                " | relation " BC_Overlay.SafeText(snapshot.targetRelationName, "unknown")
+                " | dist " BC_Overlay.SafeText(snapshot.distanceXZ, "-")
+                " | bucket " BC_Overlay.SafeText(snapshot.distanceBucketText, "-")
+            )
+        }
+
         line := (
             "Session " BC_Overlay.SafeText(snapshot.sessionSampleCount, "0")
             " samples | accepted " BC_Overlay.SafeText(snapshot.sessionAcceptedCount, "0")
@@ -903,7 +921,30 @@ class BC_Overlay {
         )
     }
 
+    static FormatOpsCompareText(snapshot) {
+        return (
+            "Ops: page " BC_Overlay.SafeText(snapshot.pageName, "-")
+            " | ops age " BC_Overlay.SafeText(snapshot.opsPageAgeMs, "-") " ms"
+            " | tactical age " BC_Overlay.SafeText(snapshot.tacticalPageAgeMs, "-") " ms"
+            " | target " (BC_State.HasTarget(snapshot) ? "present" : "none")
+            " | reader " BC_Overlay.SafeText(snapshot.searchMode, "-")
+        )
+    }
+
+    static FormatOpsPlayerDetails(snapshot) {
+        lines := []
+        lines.Push("Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")")
+        lines.Push("Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none"))
+        lines.Push("Sample/state: 0x" Format("{:04X}", Integer(snapshot.sampleMask || 0)) " / 0x" Format("{:04X}", Integer(snapshot.stateFlags || 0)))
+        lines.Push("Pages: ops " BC_Overlay.SafeText(snapshot.opsPageAgeMs, "-") " ms | tactical " BC_Overlay.SafeText(snapshot.tacticalPageAgeMs, "-") " ms")
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
     static FormatPlayerOffense(snapshot) {
+        if !BC_Overlay.IsTacticalSurface() {
+            return BC_Overlay.FormatOpsPlayerDetails(snapshot)
+        }
+
         lines := []
         lines.Push(
             "HP: "
@@ -918,7 +959,8 @@ class BC_Overlay {
         lines.Push("Attack Power: " BC_Overlay.SafeText(snapshot.playerPowerAttack, "0") "   Crit Attack: " BC_Overlay.SafeText(snapshot.playerCritAttack, "0"))
         lines.Push("Spell Power: " BC_Overlay.SafeText(snapshot.playerPowerSpell, "0") "   Crit Spell: " BC_Overlay.SafeText(snapshot.playerCritSpell, "0"))
         lines.Push("Crit Power: " BC_Overlay.SafeText(snapshot.playerCritPower, "0") "   Hit: " BC_Overlay.SafeText(snapshot.playerHit, "0"))
-        lines.Push("Flags: " BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot)) "   Damage Estimate: " BC_Overlay.SafeText(snapshot.playerDamageEstimate, "0"))
+        lines.Push("Cast: " BC_Overlay.SafeText(snapshot.playerCastProgressQ15, "0") " q15   Zone: " BC_State.HexText(snapshot.playerZoneHash16, 4))
+        lines.Push("Coord: " BC_Overlay.SafeText(snapshot.playerCoordX, "-") ", " BC_Overlay.SafeText(snapshot.playerCoordY, "-") ", " BC_Overlay.SafeText(snapshot.playerCoordZ, "-"))
         return BC_Debug.Join(lines, "`r`n")
     }
 
@@ -931,6 +973,15 @@ class BC_Overlay {
             return "No target selected"
         }
 
+        if !BC_Overlay.IsTacticalSurface() {
+            return (
+                "Level " BC_Overlay.SafeText(snapshot.targetLevel, "-")
+                " | " BC_Overlay.SafeText(snapshot.targetRelationName, "unknown")
+                " | Flags " BC_State.HexText(snapshot.targetFlags, 2)
+                " | Resource " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none")
+            )
+        }
+
         return (
             "Level " BC_Overlay.SafeText(snapshot.targetLevel, "-")
             " | Flags " BC_State.HexText(snapshot.targetFlags, 2)
@@ -939,7 +990,24 @@ class BC_Overlay {
         )
     }
 
+    static FormatOpsTargetDetails(snapshot) {
+        if !BC_Overlay.HasTarget(snapshot) {
+            return "Target telemetry unavailable."
+        }
+
+        lines := []
+        lines.Push("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")")
+        lines.Push("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ") " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none"))
+        lines.Push("Relation/tier/tag: " BC_Overlay.SafeText(snapshot.targetRelationName, "unknown") " / " BC_Overlay.SafeText(snapshot.targetTierName, "normal") " / " BC_Overlay.SafeText(snapshot.targetTaggedName, "none"))
+        lines.Push("Zone/dist: " BC_State.BoolText(snapshot.sameZone) " / " BC_Overlay.SafeText(snapshot.distanceXZ, "-") " (" BC_Overlay.SafeText(snapshot.distanceBucketText, "-") ")")
+        return BC_Debug.Join(lines, "`r`n")
+    }
+
     static FormatTargetExtras(snapshot) {
+        if !BC_Overlay.IsTacticalSurface() {
+            return BC_Overlay.FormatOpsTargetDetails(snapshot)
+        }
+
         if !BC_Overlay.HasTarget(snapshot) {
             return "Target telemetry unavailable."
         }
@@ -948,6 +1016,9 @@ class BC_Overlay {
         lines.Push("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")")
         lines.Push("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ")")
         lines.Push("State: " BC_State.JoinTags(BC_State.BuildTargetStateTags(snapshot)))
+        lines.Push("Relation/tier/tag/calling: " BC_Overlay.SafeText(snapshot.targetRelationName, "unknown") " / " BC_Overlay.SafeText(snapshot.targetTierName, "normal") " / " BC_Overlay.SafeText(snapshot.targetTaggedName, "none") " / " BC_Overlay.SafeText(snapshot.targetCallingName, "unknown"))
+        lines.Push("Zone/radius: " BC_State.HexText(snapshot.targetZoneHash16, 4) " / " BC_Overlay.SafeText(snapshot.targetRadius, "-"))
+        lines.Push("Coord: " BC_Overlay.SafeText(snapshot.targetCoordX, "-") ", " BC_Overlay.SafeText(snapshot.targetCoordY, "-") ", " BC_Overlay.SafeText(snapshot.targetCoordZ, "-"))
         lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
         lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot))
         return BC_Debug.Join(lines, "`r`n")
@@ -958,6 +1029,10 @@ class BC_Overlay {
             return "Compare: player-only"
         }
         return "Compare: " BC_State.BuildComparisonText(snapshot) " | Edge: " BC_State.BuildComparisonDeltaText(snapshot)
+    }
+
+    static IsTacticalSurface() {
+        return BC_Overlay.SurfaceMode = "hud" || BC_Overlay.SurfaceMode = "tactical"
     }
 
     static FormatPlayerHudStatus(snapshot) {
@@ -996,6 +1071,7 @@ class BC_Overlay {
     static UpdateFromSnapshot(snapshot, title := "BarCode Reader Dashboard") {
         window := BC_Overlay.EnsureWindow(title)
         controls := BC_Overlay.Controls
+        tactical := BC_Overlay.IsTacticalSurface()
         acceptedText := BC_Overlay.StatusVerdict(snapshot)
         freshnessText := (snapshot.accepted || BC_Overlay.IsHeldFrame(snapshot)) ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
         searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
@@ -1015,7 +1091,7 @@ class BC_Overlay {
         BC_Overlay.SetControlFontColor("CaptureText", BC_Overlay.CaptureColor(snapshot))
         BC_Overlay.SetControlFontColor("SessionText", BC_Overlay.SessionColor(snapshot))
         BC_Overlay.SetControlText("Status", "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText)
-        BC_Overlay.SetControlText("CompareText", BC_Overlay.FormatHudCompareText(snapshot))
+        BC_Overlay.SetControlText("CompareText", tactical ? BC_Overlay.FormatHudCompareText(snapshot) : BC_Overlay.FormatOpsCompareText(snapshot))
         BC_Overlay.SetControlText("PlayerHealthLabel", "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")")
         BC_Overlay.SetControlValue("PlayerHealthBar", BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
         BC_Overlay.SetControlText("PlayerResourceLabel", "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none"))
@@ -1111,6 +1187,7 @@ class BC_Overlay {
         BC_Overlay.StopLiveUiTimers()
         BC_Overlay.ResetLiveUiState()
         BC_Overlay.WindowNoActivate := false
+        BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.LiveUiLastSnapshot := ""
         BC_Overlay.LiveUiLastAcceptedSnapshot := ""
         snapshot := BC_State.BuildSnapshot()
@@ -1166,22 +1243,48 @@ class BC_Overlay {
         }
     }
 
+    static ShowCurrentTactical(title := "BarCode Tactical Dashboard", autoCloseMs := 0) {
+        BC_Overlay.StopLiveUiTimers()
+        BC_Overlay.ResetLiveUiState()
+        BC_Overlay.WindowNoActivate := false
+        BC_Overlay.SurfaceMode := "tactical"
+        BC_Overlay.LiveUiLastSnapshot := ""
+        BC_Overlay.LiveUiLastAcceptedSnapshot := ""
+        snapshot := BC_State.BuildSnapshot()
+        BC_State.WriteSnapshot()
+        window := BC_Overlay.UpdateFromSnapshot(snapshot, title)
+
+        if (autoCloseMs > 0) {
+            SetTimer((*) => BC_Overlay.CloseWindow(), -autoCloseMs)
+        }
+
+        BC_Overlay.WaitUntilClosed()
+
+        return {
+            Success: snapshot.accepted,
+            ReportPath: BC_Config.LiveStateTextPath,
+            Summary: {
+                Mode: "tacticalui",
+                Accepted: snapshot.accepted,
+                Reason: snapshot.reason,
+                Sequence: snapshot.sequence,
+                SearchMode: snapshot.searchMode
+            }
+        }
+    }
+
     static PrimeStaticSnapshot(result) {
         if !IsObject(result) || !result.HasOwnProp("Validation") {
             throw Error("Static HUD/dashboard preview requires a decoded result.")
         }
 
-        image := result.HasOwnProp("Image") ? result.Image : {}
-        BC_State.Update(result.Validation, {
-            Image: image,
-            Timings: {
-                CaptureMs: 0,
-                PipelineMs: 0,
-                AttemptCount: 1
-            },
-            CaptureAttempts: [IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : "preview"],
-            SampleIndex: 1
-        }, true)
+        BC_Tests.ApplyStaticResult(result, 1, true)
+    }
+
+    static PrimeSyntheticState() {
+        BC_State.ResetLiveOutputs()
+        BC_Tests.ApplyStaticResult(BC_Tests.DecodeSyntheticOps(42), 1, false)
+        BC_Tests.ApplyStaticResult(BC_Tests.DecodeSyntheticTactical(43), 2, true)
     }
 
     static WaitUntilClosed() {
@@ -1191,8 +1294,25 @@ class BC_Overlay {
     }
 
     static BuildSyntheticProvider() {
-        sequence := 0
-        return (*) => BC_Tests.DecodeSyntheticHot(++sequence)
+        state := {
+            Sequence: 0,
+            Pattern: [
+                BC_Config.PageIdOpsOverview,
+                BC_Config.PageIdTacticalCombat,
+                BC_Config.PageIdTacticalCombat,
+                BC_Config.PageIdTacticalCombat
+            ]
+        }
+        return (*) => BC_Overlay.PollSyntheticProvider(state)
+    }
+
+    static PollSyntheticProvider(state) {
+        state.Sequence += 1
+        pageIndex := Mod(state.Sequence - 1, state.Pattern.Length) + 1
+        pageId := state.Pattern[pageIndex]
+        return (pageId = BC_Config.PageIdOpsOverview)
+            ? BC_Tests.DecodeSyntheticOps(state.Sequence)
+            : BC_Tests.DecodeSyntheticTactical(state.Sequence)
     }
 
     static BuildBmpProvider(path, cropX := 0, cropY := 0) {
@@ -1356,7 +1476,9 @@ class BC_Overlay {
             ? title
             : (surfaceMode = "hud"
                 ? ("BarCode Reader HUD | LiveHUD | " BC_Overlay.LiveUiSourceLabel)
-                : ("BarCode Reader Dashboard | LiveUI | " BC_Overlay.LiveUiSourceLabel))
+                : (surfaceMode = "tactical"
+                    ? ("BarCode Tactical Dashboard | LiveTacticalUI | " BC_Overlay.LiveUiSourceLabel)
+                    : ("BarCode Reader Dashboard | LiveUI | " BC_Overlay.LiveUiSourceLabel)))
         if (surfaceMode = "hud") {
             BC_Overlay.EnsureHudWindow(windowTitle)
         } else {
@@ -1371,7 +1493,7 @@ class BC_Overlay {
             Success: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
             ReportPath: surfaceMode = "hud" ? BC_Config.LiveSummaryTextPath : BC_Config.LiveStateTextPath,
             Summary: {
-                Mode: surfaceMode = "hud" ? "livehud" : "liveui",
+                Mode: surfaceMode = "hud" ? "livehud" : (surfaceMode = "tactical" ? "livetacticalui" : "liveui"),
                 Accepted: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.accepted : false,
                 Reason: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.reason : "",
                 Sequence: IsObject(BC_Overlay.LiveUiLastSnapshot) ? BC_Overlay.LiveUiLastSnapshot.sequence : "",
@@ -1381,7 +1503,7 @@ class BC_Overlay {
     }
 
     static RunSyntheticDashboard(autoCloseMs := 0) {
-        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeSyntheticHot())
+        BC_Overlay.PrimeSyntheticState()
         return BC_Overlay.ShowCurrentState("BarCode Reader Dashboard | Synthetic", autoCloseMs)
     }
 
@@ -1390,8 +1512,18 @@ class BC_Overlay {
         return BC_Overlay.ShowCurrentState("BarCode Reader Dashboard | BMP", autoCloseMs)
     }
 
+    static RunSyntheticTacticalDashboard(autoCloseMs := 0) {
+        BC_Overlay.PrimeSyntheticState()
+        return BC_Overlay.ShowCurrentTactical("BarCode Tactical Dashboard | Synthetic", autoCloseMs)
+    }
+
+    static RunBmpTacticalDashboard(path, cropX := 0, cropY := 0, autoCloseMs := 0) {
+        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeBmp(path, cropX, cropY))
+        return BC_Overlay.ShowCurrentTactical("BarCode Tactical Dashboard | BMP", autoCloseMs)
+    }
+
     static RunSyntheticHud(autoCloseMs := 0) {
-        BC_Overlay.PrimeStaticSnapshot(BC_Tests.DecodeSyntheticHot())
+        BC_Overlay.PrimeSyntheticState()
         return BC_Overlay.ShowCurrentHud("BarCode Reader HUD | Synthetic", autoCloseMs)
     }
 
@@ -1410,6 +1542,18 @@ class BC_Overlay {
 
     static RunLiveUiLive(intervalMs := 125, autoCloseMs := 0, title := "") {
         return BC_Overlay.StartLiveUi("live", "", 0, 0, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveTacticalUiSynthetic(intervalMs := 125, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("tactical", "synthetic", "", 0, 0, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveTacticalUiBmp(path, cropX := 0, cropY := 0, intervalMs := 125, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("tactical", "bmp", path, cropX, cropY, intervalMs, autoCloseMs, title)
+    }
+
+    static RunLiveTacticalUiLive(intervalMs := 125, autoCloseMs := 0, title := "") {
+        return BC_Overlay.StartLiveSurface("tactical", "live", "", 0, 0, intervalMs, autoCloseMs, title)
     }
 
     static RunLiveHudSynthetic(intervalMs := 125, autoCloseMs := 0, title := "") {

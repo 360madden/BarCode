@@ -1,7 +1,7 @@
 /*
 script name: DesktopAHK/Config.ahk
-version: 0.3.23
-purpose: Defines shared configuration values for the scoped BarCode player-target HUD reader harness.
+version: 0.4.1
+purpose: Defines shared configuration values for the scoped BarCode player-target ops+tactical reader harness.
 dependencies: AutoHotkey v2.0+
 important assumptions: The scoped BarCode reader uses fixed-profile BC-Strip/1 geometry, but BMP/live decoding may need to solve a scaled top-left symbol panel inside a larger screenshot.
 protocol version: BC-Strip/1
@@ -20,20 +20,21 @@ BC_ConfigResolveDataRoot() {
 
 class BC_Config {
     static AppName := "BarCode"
-    static AppVersion := "0.3.23"
+    static AppVersion := "0.4.1"
     static LiveSurfaceDefaultSampleMs := 125
     static LiveSurfaceDefaultRenderMs := 250
     static ProtocolVersion := 1
     static LayoutId := 1
     static ProfileId := 1
-    static SchemaId := 3
-    static PageIdPlayerCoreHot := 0
-    static PageIdPlayerCoreCold := 1
+    static SchemaId := 4
+    static PageIdOpsOverview := 0
+    static PageIdTacticalCombat := 1
     static TransportBytes := 76
     static HeaderBytes := 12
     static PayloadBytes := 56
     static FooterBytes := 8
-    static HotPayloadUsedLength := 54
+    static OpsPayloadUsedLength := 36
+    static TacticalPayloadUsedLength := 47
     static MaxBorderErrors := 12
     static SearchMinPitch := 4.00
     static SearchMaxPitch := 8.00
@@ -51,8 +52,9 @@ class BC_Config {
     static FixtureDir := BC_Config.DataRoot "\fixtures"
     static StateDir := BC_Config.DataRoot "\state"
     static LiveHistoryLimit := 64
-    static GoodFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot.bmp"
-    static CorruptFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_hot_corrupt.bmp"
+    static GoodFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_ops.bmp"
+    static TacticalFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_tactical.bmp"
+    static CorruptFixturePath := BC_Config.FixtureDir "\bc_strip_p720a_ops_corrupt.bmp"
     static SmokeReportPath := BC_Config.ReportDir "\phase2-reader-smoke.txt"
     static FixedBmpReportPath := BC_Config.ReportDir "\phase2-fixed-bmp.txt"
     static LiveReportPath := BC_Config.ReportDir "\phase2-live.txt"

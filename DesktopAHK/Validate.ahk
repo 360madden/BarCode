@@ -1,15 +1,25 @@
 /*
 script name: DesktopAHK/Validate.ahk
-version: 0.3.0
-purpose: Applies transport integrity checks and schema-3 player-target HUD hot-page extraction to decoded BC-Strip/1 frames.
+version: 0.4.0
+purpose: Applies transport integrity checks and schema-4 ops+tactical page extraction to decoded BC-Strip/1 frames.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Interfaces.ahk, DesktopAHK/Protocol.ahk
-important assumptions: Rejects on any structural mismatch; this smoke harness does not attempt error correction or auto-detect profile changes.
+important assumptions: Rejects on any structural mismatch; this harness does not attempt error correction or auto-detect profile changes.
 protocol version: BC-Strip/1
 framework module role: Validation
 character count note: Character count not precomputed; measure with tooling if needed.
 */
 
 class BC_Validate {
+    static GetExpectedPayloadLength(pageId) {
+        if (pageId = BC_Config.PageIdOpsOverview) {
+            return BC_Config.OpsPayloadUsedLength
+        }
+        if (pageId = BC_Config.PageIdTacticalCombat) {
+            return BC_Config.TacticalPayloadUsedLength
+        }
+        return ""
+    }
+
     static Validate(detection, decodeResult) {
         bytes := decodeResult.Bytes
         details := {
@@ -46,11 +56,12 @@ class BC_Validate {
             return BC_Interfaces.ValidationResult(false, "Header identity mismatch", 0.0, details)
         }
 
-        if (transport.PageId != BC_Config.PageIdPlayerCoreHot) {
+        expectedPayloadLength := BC_Validate.GetExpectedPayloadLength(transport.PageId)
+        if (expectedPayloadLength = "") {
             return BC_Interfaces.ValidationResult(false, "Unsupported page id", 0.0, details)
         }
 
-        if (transport.PayloadUsedLength != BC_Config.HotPayloadUsedLength) {
+        if (transport.PayloadUsedLength != expectedPayloadLength) {
             return BC_Interfaces.ValidationResult(false, "Unexpected payload length", 0.0, details)
         }
 
@@ -86,7 +97,16 @@ class BC_Validate {
             return BC_Interfaces.ValidationResult(false, "Player availability flag missing", 0.0, details)
         }
 
-        details.HotPage := BC_Protocol.ExtractHotPage(bytes)
+        if (transport.PageId = BC_Config.PageIdOpsOverview) {
+            details.PageName := "ops-overview"
+            details.PageData := BC_Protocol.ExtractOpsPage(bytes)
+            details.OpsPage := details.PageData
+        } else {
+            details.PageName := "tactical-combat"
+            details.PageData := BC_Protocol.ExtractTacticalPage(bytes)
+            details.TacticalPage := details.PageData
+        }
+
         contrast := detection.Contrast > 0 ? detection.Contrast : (detection.WhiteMean - detection.BlackMean)
         borderScore := Max(0.0, 1.0 - (detection.BorderErrors / Max(1, BC_Config.MaxBorderErrors)))
         contrastScore := Min(1.0, Max(0.0, contrast / 200.0))

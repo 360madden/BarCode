@@ -1,6 +1,6 @@
 -- script name: Core/Gather.lua
--- version: 0.3.1
--- purpose: Gathers and normalizes the scoped player-target HUD telemetry snapshot for BarCode.
+-- version: 0.4.0
+-- purpose: Gathers and normalizes the scoped player-target ops+tactical telemetry snapshot for BarCode.
 -- dependencies: Core/Config.lua
 -- important assumptions: Uses locally precedent-backed Inspect.Unit.Detail/Lookup/Castbar and Inspect.Stat fields; damage-estimate bytes remain reserved until a verified source exists.
 -- protocol version: BC-Strip/1
@@ -68,6 +68,20 @@ BarCode.Gather.CastBits = {
   uninterruptible = 0x04
 }
 
+BarCode.Gather.TacticalBits = {
+  playerCast = 0x0001,
+  playerOffense = 0x0002,
+  playerZone = 0x0004,
+  targetZone = 0x0008,
+  playerCoords = 0x0010,
+  targetCoords = 0x0020,
+  targetRelation = 0x0040,
+  targetTier = 0x0080,
+  targetTagged = 0x0100,
+  targetCalling = 0x0200,
+  targetRadius = 0x0400
+}
+
 BarCode.Gather.CallingTokens = {
   { token = "mage", code = 1 },
   { token = "rogue", code = 2 },
@@ -126,12 +140,65 @@ local function ClampUnsigned8(value)
   return number
 end
 
+local function ClampSigned24(value)
+  local number = math.floor(tonumber(value) or 0)
+
+  if number < -0x800000 then
+    return -0x800000
+  end
+
+  if number > 0x7FFFFF then
+    return 0x7FFFFF
+  end
+
+  return number
+end
+
 local function NormalizeText(value)
   if value == nil then
     return ""
   end
 
   return string.lower(tostring(value))
+end
+
+local function HashText16(value)
+  local text = tostring(value or "")
+  local hash = 0x811C
+  local index
+
+  if text == "" then
+    return 0
+  end
+
+  for index = 1, string.len(text) do
+    hash = BarCode.Pack.BitXor(hash, string.byte(text, index))
+    hash = math.fmod((hash * 0x0101), 0x10000)
+  end
+
+  return hash
+end
+
+local function QuantizeCoordTenths(value)
+  local scale = BarCode.Config.coordQuantizeScale or 10
+  local number = tonumber(value)
+
+  if number == nil then
+    return 0, false
+  end
+
+  return ClampSigned24((number * scale) + (number >= 0 and 0.5 or -0.5)), true
+end
+
+local function QuantizeUnsignedTenths(value, maxValue)
+  local scale = BarCode.Config.targetRadiusQuantizeScale or 10
+  local number = tonumber(value)
+
+  if number == nil then
+    return 0, false
+  end
+
+  return ClampUnsigned16((number * scale) + 0.5), true
 end
 
 local function CollectCandidateTexts(target, value, depth)
@@ -409,6 +476,50 @@ function BarCode.Gather.GetTemporaryRole()
   return value
 end
 
+function BarCode.Gather.EncodeRelationCode(value)
+  local text = NormalizeText(value)
+
+  if text == "friendly" then
+    return 1
+  end
+
+  if text == "hostile" then
+    return 2
+  end
+
+  if text == "neutral" then
+    return 3
+  end
+
+  return 0
+end
+
+function BarCode.Gather.EncodeTierCode(value)
+  local text = NormalizeText(value)
+
+  if text == "group" then
+    return 1
+  end
+
+  if text == "raid" then
+    return 2
+  end
+
+  return 0
+end
+
+function BarCode.Gather.EncodeTaggedCode(value)
+  if value == true then
+    return 1
+  end
+
+  if NormalizeText(value) == "other" then
+    return 2
+  end
+
+  return 0
+end
+
 function BarCode.Gather.GetPreferredResourceKind(callingCode)
   if callingCode == 1 or callingCode == 3 then
     return BarCode.Gather.ResourceKind.mana
@@ -663,8 +774,23 @@ function BarCode.Gather.BuildPlayerSnapshot()
   local targetHealthMaximum = ClampUnsigned24(target.healthMax)
   local targetLevel = ClampUnsigned8(target.level)
   local targetFlags = BarCode.Gather.BuildTargetFlags(target)
+  local targetRelationCode = BarCode.Gather.EncodeRelationCode(target.relation)
+  local targetTierCode = BarCode.Gather.EncodeTierCode(target.tier)
+  local targetTaggedCode = BarCode.Gather.EncodeTaggedCode(target.tagged)
+  local targetRadiusQ10, targetRadiusAvailable = QuantizeUnsignedTenths(target.radius)
+  local playerZoneHash16 = HashText16(player.zone)
+  local targetZoneHash16 = HashText16(target.zone)
+  local playerCoordX10, playerCoordXAvailable = QuantizeCoordTenths(player.coordX)
+  local playerCoordY10, playerCoordYAvailable = QuantizeCoordTenths(player.coordY)
+  local playerCoordZ10, playerCoordZAvailable = QuantizeCoordTenths(player.coordZ)
+  local targetCoordX10, targetCoordXAvailable = QuantizeCoordTenths(target.coordX)
+  local targetCoordY10, targetCoordYAvailable = QuantizeCoordTenths(target.coordY)
+  local targetCoordZ10, targetCoordZAvailable = QuantizeCoordTenths(target.coordZ)
+  local playerCoordsAvailable = playerCoordXAvailable and playerCoordZAvailable
+  local targetCoordsAvailable = targetCoordXAvailable and targetCoordZAvailable
   local sampleMask = 0
   local stateFlags = 0
+  local tacticalMask = 0
 
   if playerAvailable then
     stateFlags = stateFlags + BarCode.Gather.StateBits.playerAvailable
@@ -689,6 +815,7 @@ function BarCode.Gather.BuildPlayerSnapshot()
 
   if cast.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCast
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerCast
   end
 
   if cast.active then
@@ -709,26 +836,32 @@ function BarCode.Gather.BuildPlayerSnapshot()
 
   if combatStats.powerAttack.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerPowerAttack
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if combatStats.critAttack.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritAttack
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if combatStats.powerSpell.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerPowerSpell
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if combatStats.critSpell.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritSpell
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if combatStats.critPower.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerCritPower
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if combatStats.hit.available then
     sampleMask = sampleMask + BarCode.Gather.SampleBits.playerHit
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerOffense
   end
 
   if targetAvailable then
@@ -760,11 +893,48 @@ function BarCode.Gather.BuildPlayerSnapshot()
     sampleMask = sampleMask + BarCode.Gather.SampleBits.targetFlags
   end
 
+  if playerZoneHash16 > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerZone
+  end
+
+  if targetZoneHash16 > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetZone
+  end
+
+  if playerCoordsAvailable then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.playerCoords
+  end
+
+  if targetCoordsAvailable then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetCoords
+  end
+
+  if targetRelationCode > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetRelation
+  end
+
+  if targetTierCode > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetTier
+  end
+
+  if targetTaggedCode > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetTagged
+  end
+
+  if targetCallingCode > 0 then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetCalling
+  end
+
+  if targetRadiusAvailable then
+    tacticalMask = tacticalMask + BarCode.Gather.TacticalBits.targetRadius
+  end
+
   return {
     clientWidth = clientWidth,
     clientHeight = clientHeight,
     playerAvailable = playerAvailable,
     sampleMask = ClampUnsigned16(sampleMask),
+    tacticalMask = ClampUnsigned16(tacticalMask),
     stateFlags = ClampUnsigned16(stateFlags),
     playerResourceKindId = playerResource.kindId,
     playerHealthCurrent = playerHealthCurrent,
@@ -789,6 +959,19 @@ function BarCode.Gather.BuildPlayerSnapshot()
     targetResourceMax = targetResource.maximum,
     targetLevel = targetLevel,
     targetFlags = targetFlags,
+    targetRelationCode = targetRelationCode,
+    targetTierCode = targetTierCode,
+    targetTaggedCode = targetTaggedCode,
+    targetCallingCode = targetCallingCode,
+    targetRadiusQ10 = targetRadiusQ10,
+    playerZoneHash16 = playerZoneHash16,
+    targetZoneHash16 = targetZoneHash16,
+    playerCoordX10 = playerCoordX10,
+    playerCoordY10 = playerCoordY10,
+    playerCoordZ10 = playerCoordZ10,
+    targetCoordX10 = targetCoordX10,
+    targetCoordY10 = targetCoordY10,
+    targetCoordZ10 = targetCoordZ10,
     playerDamageEstimate = 0,
     targetDamageEstimate = 0,
     castActive = cast.active,

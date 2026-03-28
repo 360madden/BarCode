@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.22
-purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
+version: 0.4.1
+purpose: Entry point for the BC-Strip/1 schema-4 ops+tactical reader smoke, BMP, live-capture, and reader surface harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
-important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.
+important assumptions: Default mode runs the synthetic schema-4 smoke; bmp mode decodes a supplied image; live/watch modes capture the visible RIFT client top region from the desktop.
 protocol version: BC-Strip/1
 framework module role: Desktop entry point
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -17,8 +17,10 @@ BC_MainUsageText() {
     lines.Push("  summary")
     lines.Push("  hud [autoCloseMs]")
     lines.Push("  ui [autoCloseMs]")
+    lines.Push("  tacticalui [autoCloseMs]")
     lines.Push("  hudbmp <path> [cropX] [cropY] [autoCloseMs]")
     lines.Push("  uibmp <path> [cropX] [cropY] [autoCloseMs]")
+    lines.Push("  tacticalbmp <path> [cropX] [cropY] [autoCloseMs]")
     lines.Push("  live [sampleCount] [sleepMs]")
     lines.Push("  watch [durationSeconds] [sleepMs]")
     lines.Push("  livehud synthetic [intervalMs] [autoCloseMs]")
@@ -27,6 +29,9 @@ BC_MainUsageText() {
     lines.Push("  liveui synthetic [intervalMs] [autoCloseMs]")
     lines.Push("  liveui bmp <path> [cropX] [cropY] [intervalMs] [autoCloseMs]")
     lines.Push("  liveui live [intervalMs] [autoCloseMs]")
+    lines.Push("  livetacticalui synthetic [intervalMs] [autoCloseMs]")
+    lines.Push("  livetacticalui bmp <path> [cropX] [cropY] [intervalMs] [autoCloseMs]")
+    lines.Push("  livetacticalui live [intervalMs] [autoCloseMs]")
     lines.Push("  help")
     return BC_Debug.Join(lines, "`r`n")
 }
@@ -120,7 +125,7 @@ BC_MainBuildSummaryText(mode, result) {
         return BC_Debug.Join(lines, "`r`n")
     }
 
-    if (summary.HasOwnProp("Mode") && (summary.Mode = "ui" || summary.Mode = "liveui" || summary.Mode = "hud" || summary.Mode = "livehud")) {
+    if (summary.HasOwnProp("Mode") && (summary.Mode = "ui" || summary.Mode = "liveui" || summary.Mode = "hud" || summary.Mode = "livehud" || summary.Mode = "tacticalui" || summary.Mode = "livetacticalui")) {
         lines.Push("Accepted: " (summary.Accepted ? "true" : "false"))
         lines.Push("Reason: " summary.Reason)
         if (summary.Sequence != "") {
@@ -186,6 +191,12 @@ try {
             throw Error("ui mode auto-close must be non-negative")
         }
         result := BC_Overlay.RunSyntheticDashboard(autoCloseMs)
+    } else if (mode = "tacticalui") {
+        autoCloseMs := A_Args.Length >= 2 ? Integer(A_Args[2]) : 0
+        if (autoCloseMs < 0) {
+            throw Error("tacticalui mode auto-close must be non-negative")
+        }
+        result := BC_Overlay.RunSyntheticTacticalDashboard(autoCloseMs)
     } else if (mode = "hud") {
         autoCloseMs := A_Args.Length >= 2 ? Integer(A_Args[2]) : 0
         if (autoCloseMs < 0) {
@@ -203,6 +214,17 @@ try {
             throw Error("uibmp mode auto-close must be non-negative")
         }
         result := BC_Overlay.RunBmpDashboard(A_Args[2], cropX, cropY, autoCloseMs)
+    } else if (mode = "tacticalbmp") {
+        if (A_Args.Length < 2) {
+            throw Error("tacticalbmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
+        }
+        cropX := A_Args.Length >= 3 ? Integer(A_Args[3]) : 0
+        cropY := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+        autoCloseMs := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
+        if (autoCloseMs < 0) {
+            throw Error("tacticalbmp mode auto-close must be non-negative")
+        }
+        result := BC_Overlay.RunBmpTacticalDashboard(A_Args[2], cropX, cropY, autoCloseMs)
     } else if (mode = "hudbmp") {
         if (A_Args.Length < 2) {
             throw Error("hudbmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
@@ -253,6 +275,46 @@ try {
             result := BC_Overlay.RunLiveUiLive(intervalMs, autoCloseMs)
         } else {
             throw Error("Unsupported liveui source: " source "`r`n`r`n" BC_MainUsageText())
+        }
+    } else if (mode = "livetacticalui") {
+        source := A_Args.Length >= 2 ? StrLower(A_Args[2]) : "synthetic"
+        if (source = "synthetic") {
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
+            autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            if (intervalMs < 25) {
+                throw Error("livetacticalui synthetic interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("livetacticalui synthetic auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveTacticalUiSynthetic(intervalMs, autoCloseMs)
+        } else if (source = "bmp") {
+            if (A_Args.Length < 3) {
+                throw Error("livetacticalui bmp mode requires a path argument`r`n`r`n" BC_MainUsageText())
+            }
+            cropX := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            cropY := A_Args.Length >= 5 ? Integer(A_Args[5]) : 0
+            intervalMs := A_Args.Length >= 6 ? Integer(A_Args[6]) : BC_Config.LiveSurfaceDefaultSampleMs
+            autoCloseMs := A_Args.Length >= 7 ? Integer(A_Args[7]) : 0
+            if (intervalMs < 25) {
+                throw Error("livetacticalui bmp interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("livetacticalui bmp auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveTacticalUiBmp(A_Args[3], cropX, cropY, intervalMs, autoCloseMs)
+        } else if (source = "live") {
+            intervalMs := A_Args.Length >= 3 ? Integer(A_Args[3]) : BC_Config.LiveSurfaceDefaultSampleMs
+            autoCloseMs := A_Args.Length >= 4 ? Integer(A_Args[4]) : 0
+            if (intervalMs < 25) {
+                throw Error("livetacticalui live interval must be at least 25ms")
+            }
+            if (autoCloseMs < 0) {
+                throw Error("livetacticalui live auto-close must be non-negative")
+            }
+            result := BC_Overlay.RunLiveTacticalUiLive(intervalMs, autoCloseMs)
+        } else {
+            throw Error("Unsupported livetacticalui source: " source "`r`n`r`n" BC_MainUsageText())
         }
     } else if (mode = "livehud") {
         source := A_Args.Length >= 2 ? StrLower(A_Args[2]) : "synthetic"

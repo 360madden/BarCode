@@ -1,6 +1,6 @@
 <#
 script name: scripts/Run-BarCode.ps1
-version: 0.3.22
+version: 0.4.1
 purpose: Runs DesktopAHK/Main.ahk with a chosen mode and prints the most useful available summary back to PowerShell.
 dependencies: AutoHotkey v2, DesktopAHK/Main.ahk
 important assumptions: Falls back to latest-run.txt and the referenced report file when the GUI-subsystem AHK process does not emit stdout reliably.
@@ -302,6 +302,12 @@ switch ($Mode.ToLowerInvariant()) {
         $latestScreenshotSourcePath = Get-LatestRiftScreenshot -DirectoryPath $screenshotsRoot
         $resolvedInputPath = Convert-ImageToBmpIfNeeded -SourcePath $latestScreenshotSourcePath
         $resolvedMode = 'uibmp'
+        $resolvedModeArgs = @($resolvedInputPath) + $ModeArgs
+    }
+    'tacticalbmp-latest' {
+        $latestScreenshotSourcePath = Get-LatestRiftScreenshot -DirectoryPath $screenshotsRoot
+        $resolvedInputPath = Convert-ImageToBmpIfNeeded -SourcePath $latestScreenshotSourcePath
+        $resolvedMode = 'tacticalbmp'
         $resolvedModeArgs = @($resolvedInputPath) + $ModeArgs
     }
 }

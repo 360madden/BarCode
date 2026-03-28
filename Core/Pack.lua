@@ -24,6 +24,20 @@ function BarCode.Pack.ClampUnsigned(value, maxValue)
   return number
 end
 
+function BarCode.Pack.ClampSigned(value, minValue, maxValue)
+  local number = math.floor(tonumber(value) or 0)
+
+  if number < minValue then
+    return minValue
+  end
+
+  if number > maxValue then
+    return maxValue
+  end
+
+  return number
+end
+
 function BarCode.Pack.BitXor(leftValue, rightValue)
   local result = 0
   local bitWeight = 1
@@ -101,6 +115,16 @@ function BarCode.Pack.PutUInt24(bytes, index, value)
   bytes[index + 1] = math.floor(math.fmod(number, 0x10000) / 0x100)
   bytes[index + 2] = math.fmod(number, 0x100)
   return index + 3
+end
+
+function BarCode.Pack.PutInt24(bytes, index, value)
+  local number = BarCode.Pack.ClampSigned(value, -0x800000, 0x7FFFFF)
+
+  if number < 0 then
+    number = 0x1000000 + number
+  end
+
+  return BarCode.Pack.PutUInt24(bytes, index, number)
 end
 
 function BarCode.Pack.FillWitness(bytes, startIndex, count)

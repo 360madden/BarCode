@@ -1,9 +1,9 @@
 /*
 script name: DesktopAHK/Tests.ahk
-version: 0.3.22
-purpose: Runs schema-3 player-target HUD reader smoke, BMP, and live decode checks for BC-Strip/1.
+version: 0.4.1
+purpose: Runs schema-4 ops+tactical reader smoke, BMP, and live decode checks for BC-Strip/1.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Capture.ahk, DesktopAHK/Protocol.ahk, DesktopAHK/Detect.ahk, DesktopAHK/Decode.ahk, DesktopAHK/Validate.ahk, DesktopAHK/State.ahk, DesktopAHK/Debug.ahk
-important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass.
+important assumptions: Uses exact-profile synthetic fixtures with crisp module edges and fixed-geometry BMP decode for the minimum smoke pass, while merging alternating ops+tactical pages into one state snapshot.
 protocol version: BC-Strip/1
 framework module role: Test harness
 character count note: Character count not precomputed; measure with tooling if needed.
@@ -72,10 +72,24 @@ class BC_Tests {
         }
     }
 
-    static DecodeSyntheticHot(sequence := 42) {
+    static ApplyStaticResult(result, sampleIndex := 1, persistSnapshot := false) {
+        image := result.HasOwnProp("Image") ? result.Image : {}
+        BC_State.Update(result.Validation, {
+            Image: image,
+            Timings: {
+                CaptureMs: 0,
+                PipelineMs: 0,
+                AttemptCount: 1
+            },
+            CaptureAttempts: [IsObject(image) && image.HasOwnProp("SourceKind") ? image.SourceKind : "preview"],
+            SampleIndex: sampleIndex
+        }, persistSnapshot)
+    }
+
+    static DecodeSyntheticOps(sequence := 42) {
         profile := BC_Protocol.GetProfile()
-        snapshot := BC_Protocol.BuildSyntheticHotSnapshot()
-        expectedBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, sequence, BC_Config.PageIdPlayerCoreHot)
+        snapshot := BC_Protocol.BuildSyntheticSnapshot()
+        expectedBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, sequence, BC_Config.PageIdOpsOverview)
         matrix := BC_Protocol.BuildModuleMatrix(profile, expectedBytes)
         pixels := BC_Tests.RenderMatrixToPixels(profile, matrix)
 
@@ -87,22 +101,92 @@ class BC_Tests {
         })
     }
 
+    static DecodeSyntheticTactical(sequence := 43) {
+        profile := BC_Protocol.GetProfile()
+        snapshot := BC_Protocol.BuildSyntheticSnapshot()
+        expectedBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, sequence, BC_Config.PageIdTacticalCombat)
+        matrix := BC_Protocol.BuildModuleMatrix(profile, expectedBytes)
+        pixels := BC_Tests.RenderMatrixToPixels(profile, matrix)
+
+        return BC_Tests.DecodeImage({
+            Width: profile.BandWidth,
+            Height: profile.BandHeight,
+            Pixels: pixels,
+            SourceKind: "synthetic"
+        })
+    }
+
+    static DecodeSyntheticHot(sequence := 42) {
+        return BC_Tests.DecodeSyntheticOps(sequence)
+    }
+
+    static AppendPageDataReportLines(reportLines, details, prefix := "") {
+        label := prefix = "" ? "" : (prefix " ")
+        if (details.HasOwnProp("PageName")) {
+            reportLines.Push(label "PageName: " details.PageName)
+        }
+
+        if (details.HasOwnProp("OpsPage")) {
+            ops := details.OpsPage
+            reportLines.Push(label "Ops player health: " ops.PlayerHealthCurrent "/" ops.PlayerHealthMax)
+            reportLines.Push(label "Ops player resource: " ops.PlayerResourceCurrent "/" ops.PlayerResourceMax " (" BC_State.ResourceKindName(ops.PlayerResourceKindId) ")")
+            reportLines.Push(label "Ops player level/calling/role: " ops.PlayerLevel "/" ops.PlayerCallingCode "/" ops.PlayerRoleCode)
+            reportLines.Push(label "Ops target health: " ops.TargetHealthCurrent "/" ops.TargetHealthMax)
+            reportLines.Push(label "Ops target resource: " ops.TargetResourceCurrent "/" ops.TargetResourceMax " (" BC_State.ResourceKindName(ops.TargetResourceKindId) ")")
+            reportLines.Push(label "Ops target level/flags/relation: " ops.TargetLevel "/" ops.TargetFlags "/" ops.TargetRelationCode)
+            reportLines.Push(label "Ops sample/state masks: 0x" Format("{:04X}", ops.SampleMask) " / 0x" Format("{:04X}", ops.StateFlags))
+        }
+
+        if (details.HasOwnProp("TacticalPage")) {
+            tactical := details.TacticalPage
+            reportLines.Push(label "Tactical cast flags/progress: " tactical.PlayerCastFlags "/" tactical.PlayerCastProgressQ15)
+            reportLines.Push(label "Tactical player offense: atk=" tactical.PlayerPowerAttack " critAtk=" tactical.PlayerCritAttack " spell=" tactical.PlayerPowerSpell " critSpell=" tactical.PlayerCritSpell " critPower=" tactical.PlayerCritPower " hit=" tactical.PlayerHit)
+            reportLines.Push(label "Tactical zones: 0x" Format("{:04X}", tactical.PlayerZoneHash16) " / 0x" Format("{:04X}", tactical.TargetZoneHash16))
+            reportLines.Push(label "Tactical player coord: " tactical.PlayerCoordX ", " tactical.PlayerCoordY ", " tactical.PlayerCoordZ)
+            reportLines.Push(label "Tactical target coord: " tactical.TargetCoordX ", " tactical.TargetCoordY ", " tactical.TargetCoordZ)
+            reportLines.Push(label "Tactical target relation/tier/tagged/calling: " tactical.TargetRelationCode "/" tactical.TargetTierCode "/" tactical.TargetTaggedCode "/" tactical.TargetCallingCode)
+            reportLines.Push(label "Tactical target radius: " tactical.TargetRadius)
+        }
+    }
+
+    static AppendSnapshotReportLines(reportLines, snapshot, prefix := "") {
+        if !IsObject(snapshot) {
+            return
+        }
+
+        label := prefix = "" ? "" : (prefix " ")
+        reportLines.Push(label "Snapshot page: " BC_State.DefaultText(snapshot.pageName, "-"))
+        reportLines.Push(label "Snapshot player: HP " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " | " BC_State.DefaultText(snapshot.playerResourceKindName, "none") " " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax))
+        reportLines.Push(label "Snapshot target: HP " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " | " BC_State.DefaultText(snapshot.targetResourceKindName, "none") " " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax))
+        reportLines.Push(label "Snapshot compare: " BC_State.BuildComparisonText(snapshot))
+        reportLines.Push(label "Snapshot tactical: dist " BC_State.DefaultText(snapshot.distanceXZ, "-") " | bucket " BC_State.DefaultText(snapshot.distanceBucketText, "-") " | sameZone " BC_State.BoolText(snapshot.sameZone))
+        reportLines.Push(label "Snapshot page ages: ops " BC_State.DefaultText(snapshot.opsPageAgeMs, "-") " ms | tactical " BC_State.DefaultText(snapshot.tacticalPageAgeMs, "-") " ms")
+    }
+
     static RunReaderSmoke() {
         BC_Debug.WriteText(BC_Debug.TracePath(), "tests.run:start`r`n")
 
         profile := BC_Protocol.GetProfile()
-        snapshot := BC_Protocol.BuildSyntheticHotSnapshot()
-        expectedBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, 42, BC_Config.PageIdPlayerCoreHot)
+        snapshot := BC_Protocol.BuildSyntheticSnapshot()
+        expectedOpsBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, 42, BC_Config.PageIdOpsOverview)
+        expectedTacticalBytes := BC_Protocol.BuildLiveFrameBytes(snapshot, 43, BC_Config.PageIdTacticalCombat)
         BC_Debug.Trace("tests.run:bytes`r`n")
 
-        goodMatrix := BC_Protocol.BuildModuleMatrix(profile, expectedBytes)
+        goodMatrix := BC_Protocol.BuildModuleMatrix(profile, expectedOpsBytes)
         goodPixels := BC_Tests.RenderMatrixToPixels(profile, goodMatrix)
         BC_Debug.WriteBmp24(BC_Config.GoodFixturePath, profile.BandWidth, profile.BandHeight, goodPixels)
         BC_Debug.Trace("tests.run:good-fixture`r`n")
 
         goodResult := BC_Tests.DecodeBmp(BC_Config.GoodFixturePath)
 
-        corruptMatrix := BC_Protocol.BuildModuleMatrix(profile, expectedBytes)
+        tacticalMatrix := BC_Protocol.BuildModuleMatrix(profile, expectedTacticalBytes)
+        tacticalPixels := BC_Tests.RenderMatrixToPixels(profile, tacticalMatrix)
+        BC_Debug.WriteBmp24(BC_Config.TacticalFixturePath, profile.BandWidth, profile.BandHeight, tacticalPixels)
+        BC_Debug.Trace("tests.run:tactical-fixture`r`n")
+
+        tacticalResult := BC_Tests.DecodeBmp(BC_Config.TacticalFixturePath)
+
+        corruptMatrix := BC_Protocol.BuildModuleMatrix(profile, expectedOpsBytes)
         corruptMatrix[2][2] := (corruptMatrix[2][2] = 1) ? 0 : 1
         corruptPixels := BC_Tests.RenderMatrixToPixels(profile, corruptMatrix)
         BC_Debug.WriteBmp24(BC_Config.CorruptFixturePath, profile.BandWidth, profile.BandHeight, corruptPixels)
@@ -110,30 +194,37 @@ class BC_Tests {
 
         corruptResult := BC_Tests.DecodeBmp(BC_Config.CorruptFixturePath)
 
-        success := goodResult.Validation.IsAccepted && !corruptResult.Validation.IsAccepted
+        success := goodResult.Validation.IsAccepted && tacticalResult.Validation.IsAccepted && !corruptResult.Validation.IsAccepted
+        BC_State.ResetLiveOutputs()
+        BC_Tests.ApplyStaticResult(goodResult, 1, false)
+        BC_Tests.ApplyStaticResult(tacticalResult, 2, true)
+        mergedSnapshot := BC_State.BuildSnapshot()
         reportLines := []
-        reportLines.Push("BarCode schema-3 reader smoke report")
+        reportLines.Push("BarCode schema-4 reader smoke report")
         reportLines.Push("Success: " BC_Tests.BoolText(success))
-        reportLines.Push("Good fixture: " BC_Config.GoodFixturePath)
+        reportLines.Push("Ops fixture: " BC_Config.GoodFixturePath)
+        reportLines.Push("Tactical fixture: " BC_Config.TacticalFixturePath)
         reportLines.Push("Corrupt fixture: " BC_Config.CorruptFixturePath)
         reportLines.Push("")
-        reportLines.Push("Expected bytes[1..16]: " BC_Debug.Hex(expectedBytes, 1, 16))
-        reportLines.Push("Good accepted: " BC_Tests.BoolText(goodResult.Validation.IsAccepted))
-        reportLines.Push("Good reason: " goodResult.Validation.Reason)
-        reportLines.Push("Good sequence: " goodResult.Validation.Details.Transport.Sequence)
-        reportLines.Push("Good page id: " goodResult.Validation.Details.Transport.PageId)
-        reportLines.Push("Good payload length: " goodResult.Validation.Details.Transport.PayloadUsedLength)
-        reportLines.Push("Good player health: " goodResult.Validation.Details.HotPage.PlayerHealthCurrent "/" goodResult.Validation.Details.HotPage.PlayerHealthMax)
-        reportLines.Push("Good player resource: " goodResult.Validation.Details.HotPage.PlayerResourceCurrent "/" goodResult.Validation.Details.HotPage.PlayerResourceMax)
-        reportLines.Push("Good player cast progress q15: " goodResult.Validation.Details.HotPage.PlayerCastProgressQ15)
-        reportLines.Push("Good player level/calling/role: " goodResult.Validation.Details.HotPage.PlayerLevel "/" goodResult.Validation.Details.HotPage.PlayerCallingCode "/" goodResult.Validation.Details.HotPage.PlayerRoleCode)
-        reportLines.Push("Good player offense: atk=" goodResult.Validation.Details.HotPage.PlayerPowerAttack " critAtk=" goodResult.Validation.Details.HotPage.PlayerCritAttack " spell=" goodResult.Validation.Details.HotPage.PlayerPowerSpell " critSpell=" goodResult.Validation.Details.HotPage.PlayerCritSpell " critPower=" goodResult.Validation.Details.HotPage.PlayerCritPower " hit=" goodResult.Validation.Details.HotPage.PlayerHit)
-        reportLines.Push("Good target health: " goodResult.Validation.Details.HotPage.TargetHealthCurrent "/" goodResult.Validation.Details.HotPage.TargetHealthMax)
-        reportLines.Push("Good target resource: " goodResult.Validation.Details.HotPage.TargetResourceCurrent "/" goodResult.Validation.Details.HotPage.TargetResourceMax)
-        reportLines.Push("Good target level/flags: " goodResult.Validation.Details.HotPage.TargetLevel "/" goodResult.Validation.Details.HotPage.TargetFlags)
-        reportLines.Push("Good sample mask: 0x" Format("{:04X}", goodResult.Validation.Details.HotPage.SampleMask))
-        reportLines.Push("Good state flags: 0x" Format("{:04X}", goodResult.Validation.Details.HotPage.StateFlags))
-        reportLines.Push("Good confidence: " goodResult.Validation.Confidence)
+        reportLines.Push("Expected ops bytes[1..16]: " BC_Debug.Hex(expectedOpsBytes, 1, 16))
+        reportLines.Push("Expected tactical bytes[1..16]: " BC_Debug.Hex(expectedTacticalBytes, 1, 16))
+        reportLines.Push("Ops accepted: " BC_Tests.BoolText(goodResult.Validation.IsAccepted))
+        reportLines.Push("Ops reason: " goodResult.Validation.Reason)
+        reportLines.Push("Ops sequence: " goodResult.Validation.Details.Transport.Sequence)
+        reportLines.Push("Ops page id: " goodResult.Validation.Details.Transport.PageId)
+        reportLines.Push("Ops payload length: " goodResult.Validation.Details.Transport.PayloadUsedLength)
+        BC_Tests.AppendPageDataReportLines(reportLines, goodResult.Validation.Details, "Ops")
+        reportLines.Push("Ops confidence: " goodResult.Validation.Confidence)
+        reportLines.Push("")
+        reportLines.Push("Tactical accepted: " BC_Tests.BoolText(tacticalResult.Validation.IsAccepted))
+        reportLines.Push("Tactical reason: " tacticalResult.Validation.Reason)
+        reportLines.Push("Tactical sequence: " tacticalResult.Validation.Details.Transport.Sequence)
+        reportLines.Push("Tactical page id: " tacticalResult.Validation.Details.Transport.PageId)
+        reportLines.Push("Tactical payload length: " tacticalResult.Validation.Details.Transport.PayloadUsedLength)
+        BC_Tests.AppendPageDataReportLines(reportLines, tacticalResult.Validation.Details, "Tactical")
+        reportLines.Push("Tactical confidence: " tacticalResult.Validation.Confidence)
+        reportLines.Push("")
+        BC_Tests.AppendSnapshotReportLines(reportLines, mergedSnapshot, "Merged")
         reportLines.Push("")
         reportLines.Push("Corrupt accepted: " BC_Tests.BoolText(corruptResult.Validation.IsAccepted))
         reportLines.Push("Corrupt reason: " corruptResult.Validation.Reason)
@@ -141,27 +232,18 @@ class BC_Tests {
 
         report := BC_Debug.Join(reportLines, "`r`n")
         BC_Debug.WriteText(BC_Config.SmokeReportPath, report)
-        BC_State.Update(goodResult.Validation, {
-            Image: goodResult.Image,
-            Timings: {
-                CaptureMs: 0,
-                PipelineMs: 0,
-                AttemptCount: 1
-            },
-            CaptureAttempts: [goodResult.Image.SourceKind],
-            SampleIndex: 1
-        }, true)
 
         return {
             Success: success,
             ReportPath: BC_Config.SmokeReportPath,
             GoodFixturePath: BC_Config.GoodFixturePath,
+            TacticalFixturePath: BC_Config.TacticalFixturePath,
             CorruptFixturePath: BC_Config.CorruptFixturePath,
             Summary: {
                 Mode: "smoke",
                 Success: success,
-                GoodAccepted: goodResult.Validation.IsAccepted,
-                GoodReason: goodResult.Validation.Reason,
+                GoodAccepted: goodResult.Validation.IsAccepted && tacticalResult.Validation.IsAccepted,
+                GoodReason: goodResult.Validation.Reason " / " tacticalResult.Validation.Reason,
                 CorruptAccepted: corruptResult.Validation.IsAccepted,
                 CorruptReason: corruptResult.Validation.Reason
             }
@@ -203,20 +285,8 @@ class BC_Tests {
             reportLines.Push("PayloadUsedLength: " details.Transport.PayloadUsedLength)
         }
 
-        if (details.HasOwnProp("HotPage")) {
-            reportLines.Push("PlayerHealth: " details.HotPage.PlayerHealthCurrent "/" details.HotPage.PlayerHealthMax)
-            reportLines.Push("PlayerResource: " details.HotPage.PlayerResourceCurrent "/" details.HotPage.PlayerResourceMax)
-            reportLines.Push("PlayerCastProgressQ15: " details.HotPage.PlayerCastProgressQ15)
-            reportLines.Push("PlayerLevel: " details.HotPage.PlayerLevel)
-            reportLines.Push("PlayerCallingCode: " details.HotPage.PlayerCallingCode)
-            reportLines.Push("PlayerRoleCode: " details.HotPage.PlayerRoleCode)
-            reportLines.Push("PlayerOffense: atk=" details.HotPage.PlayerPowerAttack " critAtk=" details.HotPage.PlayerCritAttack " spell=" details.HotPage.PlayerPowerSpell " critSpell=" details.HotPage.PlayerCritSpell " critPower=" details.HotPage.PlayerCritPower " hit=" details.HotPage.PlayerHit)
-            reportLines.Push("TargetHealth: " details.HotPage.TargetHealthCurrent "/" details.HotPage.TargetHealthMax)
-            reportLines.Push("TargetResource: " details.HotPage.TargetResourceCurrent "/" details.HotPage.TargetResourceMax)
-            reportLines.Push("TargetLevel: " details.HotPage.TargetLevel)
-            reportLines.Push("TargetFlags: " details.HotPage.TargetFlags)
-        }
-
+        BC_Tests.AppendPageDataReportLines(reportLines, details)
+        BC_Tests.AppendSnapshotReportLines(reportLines, BC_State.BuildSnapshot(), "Merged")
         reportLines.Push("Confidence: " validation.Confidence)
         reportLines.Push("Decoded bytes[1..16]: " BC_Debug.Hex(result.Decode.Bytes, 1, 16))
         BC_Debug.WriteText(BC_Config.FixedBmpReportPath, BC_Debug.Join(reportLines, "`r`n"))
@@ -331,8 +401,8 @@ class BC_Tests {
         client := lastResult.Image.ClientRect
         validation := lastResult.Validation
         details := validation.Details
-        hotPage := details.HasOwnProp("HotPage") ? details.HotPage : {}
         transport := details.HasOwnProp("Transport") ? details.Transport : {}
+        mergedSnapshot := BC_State.BuildSnapshot()
 
         BC_Debug.WriteBmp24(BC_Config.LiveCaptureBmpPath, lastResult.Image.Width, lastResult.Image.Height, lastResult.Image.Pixels)
         if IsObject(firstRejectedResult) {
@@ -386,19 +456,8 @@ class BC_Tests {
             reportLines.Push("LastSequence: " transport.Sequence)
             reportLines.Push("LastPageId: " transport.PageId)
         }
-        if (hotPage.HasOwnProp("PlayerHealthCurrent")) {
-            reportLines.Push("PlayerHealth: " hotPage.PlayerHealthCurrent "/" hotPage.PlayerHealthMax)
-            reportLines.Push("PlayerResource: " hotPage.PlayerResourceCurrent "/" hotPage.PlayerResourceMax)
-            reportLines.Push("PlayerCastProgressQ15: " hotPage.PlayerCastProgressQ15)
-            reportLines.Push("PlayerLevel: " hotPage.PlayerLevel)
-            reportLines.Push("PlayerCallingCode: " hotPage.PlayerCallingCode)
-            reportLines.Push("PlayerRoleCode: " hotPage.PlayerRoleCode)
-            reportLines.Push("PlayerOffense: atk=" hotPage.PlayerPowerAttack " critAtk=" hotPage.PlayerCritAttack " spell=" hotPage.PlayerPowerSpell " critSpell=" hotPage.PlayerCritSpell " critPower=" hotPage.PlayerCritPower " hit=" hotPage.PlayerHit)
-            reportLines.Push("TargetHealth: " hotPage.TargetHealthCurrent "/" hotPage.TargetHealthMax)
-            reportLines.Push("TargetResource: " hotPage.TargetResourceCurrent "/" hotPage.TargetResourceMax)
-            reportLines.Push("TargetLevel: " hotPage.TargetLevel)
-            reportLines.Push("TargetFlags: " hotPage.TargetFlags)
-        }
+        BC_Tests.AppendPageDataReportLines(reportLines, details, "Last")
+        BC_Tests.AppendSnapshotReportLines(reportLines, mergedSnapshot, "Merged")
         reportLines.Push("Decoded bytes[1..16]: " BC_Debug.Hex(lastResult.Decode.Bytes, 1, 16))
         reportLines.Push("LastCaptureBmp: " BC_Config.LiveCaptureBmpPath)
         reportLines.Push("StateHistoryJson: " BC_Config.LiveHistoryJsonPath)
@@ -516,6 +575,7 @@ class BC_Tests {
         client := lastResult.Image.ClientRect
         validation := lastResult.Validation
         details := validation.Details
+        mergedSnapshot := BC_State.BuildSnapshot()
         if IsObject(firstRejectedResult) {
             BC_Debug.WriteBmp24(BC_Config.LiveWatchRejectBmpPath, firstRejectedResult.Image.Width, firstRejectedResult.Image.Height, firstRejectedResult.Image.Pixels)
         }
@@ -560,6 +620,8 @@ class BC_Tests {
         reportLines.Push("Pitch: " Round(details.Pitch, 3))
         reportLines.Push("BandSize: " Round(details.BandWidth, 3) "x" Round(details.BandHeight, 3))
         reportLines.Push("BorderErrors: " details.BorderErrors)
+        BC_Tests.AppendPageDataReportLines(reportLines, details, "Last")
+        BC_Tests.AppendSnapshotReportLines(reportLines, mergedSnapshot, "Merged")
         reportLines.Push("StateJson: " BC_Config.LiveStateJsonPath)
         reportLines.Push("StateText: " BC_Config.LiveStateTextPath)
         reportLines.Push("StateHistoryJson: " BC_Config.LiveHistoryJsonPath)

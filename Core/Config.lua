@@ -1,6 +1,6 @@
 -- script name: Core/Config.lua
--- version: 0.3.2
--- purpose: Defines shared BarCode constants, colors, profiles, transport sizes, and scoped player-target HUD telemetry options.
+-- version: 0.4.1
+-- purpose: Defines shared BarCode constants, colors, profiles, transport sizes, and scoped player-target tactical telemetry options.
 -- dependencies: None. Loaded before other BarCode Lua modules.
 -- important assumptions: Pass 3 keeps BC-Strip/1 geometry fixed while narrowing the product scope to player/target HUD telemetry.
 -- protocol version: BC-Strip/1
@@ -10,10 +10,10 @@
 BarCode = BarCode or {}
 BarCode.Config = {
   addonIdentifier = "BarCode",
-  addonVersion = "0.3.2",
+  addonVersion = "0.4.1",
   protocolVersion = 1,
   layoutId = 1,
-  schemaId = 3,
+  schemaId = 4,
   requestedStrata = nil,
   requestedLayer = 100000,
   showOnStartup = true,
@@ -31,9 +31,17 @@ BarCode.Config = {
   payloadBytes = 56,
   footerBytes = 8,
   pageIds = {
-    playerCoreHot = 0,
-    playerCoreCold = 1
+    opsOverview = 0,
+    tacticalCombat = 1
   },
+  pageSchedulePattern = {
+    0,
+    1,
+    1,
+    1
+  },
+  coordQuantizeScale = 10,
+  targetRadiusQuantizeScale = 10,
   colors = {
     bandReservedDark = { 0.03, 0.03, 0.03, 1.0 },
     symbolPanelLight = { 0.96, 0.96, 0.96, 1.0 },
