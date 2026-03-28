@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Main.ahk
-version: 0.3.19
+version: 0.3.20
 purpose: Entry point for the BC-Strip/1 schema-3 reader smoke, BMP, and bounded live-capture harness.
 dependencies: AutoHotkey v2.0+, DesktopAHK modular files
 important assumptions: Default mode runs the synthetic schema-3 reader smoke; bmp mode decodes a supplied image; live mode captures the visible RIFT client top region from the desktop.

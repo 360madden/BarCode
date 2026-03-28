@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/State.ahk
-version: 0.3.19
+version: 0.3.20
 purpose: Tracks the latest decoded frame and emits app-facing live state snapshots for local consumers.
 dependencies: DesktopAHK/Config.ahk, DesktopAHK/Debug.ahk, DesktopAHK/Validate.ahk
 important assumptions: Persists a flat latest-state snapshot for downstream tools rather than serializing the full nested validation object.
@@ -84,6 +84,7 @@ class BC_State {
 
         latest := {
             TimestampUtc: A_NowUTC,
+            TimestampTickCount: A_TickCount,
             Accepted: validationResult.IsAccepted,
             Reason: validationResult.Reason,
             Confidence: validationResult.Confidence,
@@ -189,6 +190,7 @@ class BC_State {
         latest := BC_State.Latest
         return {
             timestampUtc: BC_State.GetValue(latest, "TimestampUtc", ""),
+            timestampTickCount: BC_State.GetValue(latest, "TimestampTickCount", ""),
             accepted: BC_State.GetValue(latest, "Accepted", false),
             reason: BC_State.GetValue(latest, "Reason", ""),
             confidence: BC_State.GetValue(latest, "Confidence", ""),
@@ -369,6 +371,7 @@ class BC_State {
         captureRectText := BC_State.RectText(snapshot.captureLeft, snapshot.captureTop, snapshot.captureWidth, snapshot.captureHeight)
         lines.Push("BarCode live state snapshot")
         lines.Push("TimestampUtc: " snapshot.timestampUtc)
+        lines.Push("SampleAgeMs: " BC_State.AgeText(snapshot))
         lines.Push("Accepted: " BC_State.BoolText(snapshot.accepted))
         lines.Push("Reason: " snapshot.reason)
         lines.Push("Confidence: " BC_State.NumberText(snapshot.confidence))
@@ -430,11 +433,13 @@ class BC_State {
     static BuildOperatorSummaryText(snapshot) {
         lines := []
         freshnessText := StrUpper(BC_State.FreshnessLabel(snapshot))
+        ageText := BC_State.AgeText(snapshot)
         lines.Push("BarCode HUD summary")
         lines.Push(
             "Status: "
             (snapshot.accepted ? "ACCEPTED" : "REJECTED")
             " | " freshnessText
+            " | sample " ageText
             " | seq " BC_State.DefaultText(snapshot.sequence, "-")
             " | conf " BC_State.DefaultText(snapshot.confidence, "-")
         )
@@ -507,6 +512,7 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("freshness", BC_State.FreshnessLabel(snapshot)))
         fields.Push(BC_State.JsonStringField("reason", snapshot.reason))
         fields.Push(BC_State.JsonNumberField("confidence", snapshot.confidence))
+        fields.Push(BC_State.JsonNumberField("sampleAgeMs", BC_State.AgeMs(snapshot)))
         fields.Push(BC_State.JsonNumberField("sequence", snapshot.sequence))
         fields.Push(BC_State.JsonBoolField("targetPresent", BC_State.HasTarget(snapshot)))
         fields.Push(BC_State.JsonStringField("playerStateText", BC_State.JoinTags(BC_State.BuildPlayerStateTags(snapshot))))
@@ -577,11 +583,13 @@ class BC_State {
         }
 
         reasonText := snapshot.reason != "" ? snapshot.reason : "-"
+        ageText := BC_State.AgeText(snapshot, "")
         return (
             snapshot.timestampUtc
             " | " acceptedText
             " | seq " sequenceText
             " | conf " confidenceText
+            (ageText = "" ? "" : (" | age " ageText))
             " | " reasonText
         )
     }
@@ -1116,6 +1124,20 @@ class BC_State {
             return fallback
         }
         return leftText "," topText " " widthText "x" heightText
+    }
+
+    static AgeMs(snapshot) {
+        if !IsObject(snapshot) || !snapshot.HasOwnProp("timestampTickCount") || snapshot.timestampTickCount = "" {
+            return ""
+        }
+
+        ageMs := A_TickCount - Integer(snapshot.timestampTickCount)
+        return ageMs < 0 ? "" : ageMs
+    }
+
+    static AgeText(snapshot, fallback := "-") {
+        ageMs := BC_State.AgeMs(snapshot)
+        return ageMs = "" ? fallback : (ageMs " ms")
     }
 
     static Percent(current, maximum) {

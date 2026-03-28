@@ -1,6 +1,6 @@
 /*
 script name: DesktopAHK/Overlay.ahk
-version: 0.3.19
+version: 0.3.20
 purpose: Provides a compact reader dashboard UI skeleton for synthetic, BMP, and future live BarCode decode views.
 dependencies: AutoHotkey v2.0+, DesktopAHK/State.ahk, DesktopAHK/Tests.ahk
 important assumptions: This is a local diagnostics UI, not an in-game overlay, and it reads from the existing BarCode state model rather than creating a second UI-specific data path.
@@ -409,7 +409,8 @@ class BC_Overlay {
         freshness := BC_Overlay.FreshnessLabel(snapshot)
         searchMode := BC_Overlay.SafeText(snapshot.searchMode, "-")
         pipelineMs := BC_Overlay.SafeText(snapshot.pipelineMs, "-")
-        return verdict " | " freshness " | " searchMode " | seq=" seq " | ms=" pipelineMs " | conf=" confidence " | " reason
+        ageText := BC_State.AgeText(snapshot)
+        return verdict " | " freshness " | " searchMode " | seq=" seq " | age=" ageText " | ms=" pipelineMs " | conf=" confidence " | " reason
     }
 
     static ResetLiveUiHistory() {
@@ -592,8 +593,8 @@ class BC_Overlay {
         lines := []
         lines.Push("Sequence: " BC_Overlay.SafeText(snapshot.sequence, "-"))
         lines.Push("Page / Payload: " BC_Overlay.SafeText(snapshot.pageId, "-") " / " BC_Overlay.SafeText(snapshot.payloadUsedLength, "-"))
-        lines.Push("Frame / Advance: " BC_Overlay.FreshnessLabel(snapshot) " / " BC_Overlay.SafeText(snapshot.sequenceAdvance, "-"))
-        lines.Push("Confidence: " BC_Overlay.SafeText(snapshot.confidence, "-"))
+        lines.Push("Frame / Age: " BC_Overlay.FreshnessLabel(snapshot) " / " BC_State.AgeText(snapshot))
+        lines.Push("Advance / Confidence: " BC_Overlay.SafeText(snapshot.sequenceAdvance, "-") " / " BC_Overlay.SafeText(snapshot.confidence, "-"))
         lines.Push("Reason: " BC_Overlay.SafeText(snapshot.reason, "-"))
         lines.Push("Search: " BC_Overlay.SafeText(snapshot.searchMode, "-"))
         lines.Push("Pitch / Band: " BC_Overlay.SafeText(snapshot.pitch, "-") " / " BC_Overlay.SafeText(snapshot.bandWidth, "-") "x" BC_Overlay.SafeText(snapshot.bandHeight, "-"))
@@ -624,6 +625,7 @@ class BC_Overlay {
             "/" BC_Overlay.SafeText(snapshot.rejectedStreak, "0")
             " | repeats " BC_Overlay.SafeText(snapshot.sequenceRepeatedCount, "0")
             " | wraps " BC_Overlay.SafeText(snapshot.sequenceWrapCount, "0")
+            " | age " BC_State.AgeText(snapshot)
         )
         if BC_State.HasTarget(snapshot) {
             line .= "`r`nCompare " BC_State.BuildComparisonText(snapshot)
@@ -723,6 +725,8 @@ class BC_Overlay {
             BC_Overlay.SafeText(snapshot.captureSource, "-")
             " | "
             BC_Overlay.SafeText(snapshot.captureRouteReason, "-")
+            " | age "
+            BC_State.AgeText(snapshot)
             " | capture "
             BC_Overlay.SafeText(snapshot.captureMs, "-")
             " ms | pipeline "
@@ -738,6 +742,7 @@ class BC_Overlay {
         freshnessText := (snapshot.accepted || BC_Overlay.IsHeldFrame(snapshot)) ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
         searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
         statusColor := BC_Overlay.StatusColor(snapshot)
+        ageText := BC_State.AgeText(snapshot, "")
         sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
         confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
         reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
@@ -750,7 +755,7 @@ class BC_Overlay {
             controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
         } catch {
         }
-        controls.Status.Text := "Status: " acceptedText freshnessText searchText reasonText sequenceText confidenceText
+        controls.Status.Text := "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText
         controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
         controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
         controls.PlayerResourceLabel.Text := "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none")
@@ -786,6 +791,7 @@ class BC_Overlay {
         freshnessText := (snapshot.accepted || BC_Overlay.IsHeldFrame(snapshot)) ? (" | " StrUpper(BC_Overlay.FreshnessLabel(snapshot))) : ""
         searchText := snapshot.searchMode = "" ? "" : (" | " StrUpper(snapshot.searchMode))
         statusColor := BC_Overlay.StatusColor(snapshot)
+        ageText := BC_State.AgeText(snapshot, "")
         sequenceText := snapshot.sequence = "" ? "" : (" | Seq " snapshot.sequence)
         confidenceText := snapshot.confidence = "" ? "" : (" | Confidence " snapshot.confidence)
         reasonText := snapshot.reason = "" ? "" : (" | " snapshot.reason)
@@ -799,7 +805,7 @@ class BC_Overlay {
         } catch {
         }
 
-        controls.Status.Text := "Status: " acceptedText freshnessText searchText reasonText sequenceText confidenceText
+        controls.Status.Text := "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText
         controls.CompareText.Text := BC_Overlay.FormatHudCompareText(snapshot)
         controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
         controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
@@ -1008,7 +1014,7 @@ class BC_Overlay {
             BC_Overlay.LiveUiLastSnapshot := displaySnapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
             BC_Overlay.RenderSnapshot(displaySnapshot, BC_Overlay.CurrentTitle)
-            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot))
+            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot)) " | Age " BC_State.AgeText(displaySnapshot)
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
             BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode liveui error`r`n" err.Message "`r`n" err.Stack)
