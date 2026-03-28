@@ -196,12 +196,14 @@ class BC_Overlay {
         historyY := bottomY
         detailsGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", detailsX, detailsY, bottomGroupWidth, bottomHeight), "Snapshot Details")
         window.SetFont("s9 c" BC_Overlay.Palette.DetailText, "Consolas")
-        detailsBody := window.AddEdit(Format("x{} y{} w{} r7 ReadOnly WantCtrlA Background{}", detailsX + innerXOffset, detailsY + 24, innerWidth, BC_Overlay.Palette.PanelBack), "")
+        detailsBodyHeight := bottomHeight - 48
+        detailsBody := window.AddEdit(Format("x{} y{} w{} h{} ReadOnly WantCtrlA Background{}", detailsX + innerXOffset, detailsY + 24, innerWidth, detailsBodyHeight, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s10 Bold c" BC_Overlay.Palette.Header, "Consolas")
         historyGroup := window.AddGroupBox(Format("x{} y{} w{} h{}", historyX, historyY, bottomGroupWidth, bottomHeight), "Recent Frames")
         window.SetFont("s9 c" BC_Overlay.Palette.HistoryText, "Consolas")
-        historyBody := window.AddEdit(Format("x{} y{} w{} r7 ReadOnly WantCtrlA Background{}", historyX + innerXOffset, historyY + 24, innerWidth, BC_Overlay.Palette.PanelBack), "")
+        historyBodyHeight := bottomHeight - 48
+        historyBody := window.AddEdit(Format("x{} y{} w{} h{} ReadOnly WantCtrlA Background{}", historyX + innerXOffset, historyY + 24, innerWidth, historyBodyHeight, BC_Overlay.Palette.PanelBack), "")
 
         window.SetFont("s9 c" BC_Overlay.Palette.Footer, "Consolas")
         footer := window.AddText(Format("x{} y{} w{}", contentX, footerY, contentWidth), "Close the window to exit this reader preview.")
