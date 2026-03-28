@@ -905,7 +905,8 @@ class BC_Overlay {
         )
         if BC_State.HasTarget(snapshot) {
             line .= "`r`nCompare " BC_State.BuildComparisonText(snapshot)
-            line .= "`r`nEdge " BC_State.BuildComparisonDeltaText(snapshot)
+            line .= "`r`nEdge " BC_State.BuildComparisonDeltaText(snapshot) " | trend " BC_Overlay.SafeText(snapshot.rangeTrendText, "unknown")
+            line .= "`r`nMove player " BC_Overlay.SafeText(snapshot.playerMoveState, "unknown") " (" BC_Overlay.SafeText(snapshot.playerMoveDeltaXZ, "-") ") | target " BC_Overlay.SafeText(snapshot.targetMoveState, "unknown") " (" BC_Overlay.SafeText(snapshot.targetMoveDeltaXZ, "-") ")"
         } else {
             line .= "`r`nCompare player-only"
         }
@@ -961,6 +962,7 @@ class BC_Overlay {
         lines.Push("Crit Power: " BC_Overlay.SafeText(snapshot.playerCritPower, "0") "   Hit: " BC_Overlay.SafeText(snapshot.playerHit, "0"))
         lines.Push("Cast: " BC_Overlay.SafeText(snapshot.playerCastProgressQ15, "0") " q15   Zone: " BC_State.HexText(snapshot.playerZoneHash16, 4))
         lines.Push("Coord: " BC_Overlay.SafeText(snapshot.playerCoordX, "-") ", " BC_Overlay.SafeText(snapshot.playerCoordY, "-") ", " BC_Overlay.SafeText(snapshot.playerCoordZ, "-"))
+        lines.Push("Motion: " BC_Overlay.SafeText(snapshot.playerMoveState, "unknown") "   deltaXZ: " BC_Overlay.SafeText(snapshot.playerMoveDeltaXZ, "-"))
         return BC_Debug.Join(lines, "`r`n")
     }
 
@@ -1019,8 +1021,9 @@ class BC_Overlay {
         lines.Push("Relation/tier/tag/calling: " BC_Overlay.SafeText(snapshot.targetRelationName, "unknown") " / " BC_Overlay.SafeText(snapshot.targetTierName, "normal") " / " BC_Overlay.SafeText(snapshot.targetTaggedName, "none") " / " BC_Overlay.SafeText(snapshot.targetCallingName, "unknown"))
         lines.Push("Zone/radius: " BC_State.HexText(snapshot.targetZoneHash16, 4) " / " BC_Overlay.SafeText(snapshot.targetRadius, "-"))
         lines.Push("Coord: " BC_Overlay.SafeText(snapshot.targetCoordX, "-") ", " BC_Overlay.SafeText(snapshot.targetCoordY, "-") ", " BC_Overlay.SafeText(snapshot.targetCoordZ, "-"))
+        lines.Push("Motion: " BC_Overlay.SafeText(snapshot.targetMoveState, "unknown") "   deltaXZ: " BC_Overlay.SafeText(snapshot.targetMoveDeltaXZ, "-"))
         lines.Push("Compare: " BC_State.BuildComparisonText(snapshot))
-        lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot))
+        lines.Push("Edge: " BC_State.BuildComparisonDeltaText(snapshot) " | trend " BC_Overlay.SafeText(snapshot.rangeTrendText, "unknown") " (" BC_Overlay.SafeText(snapshot.distanceDeltaXZ, "-") ")")
         return BC_Debug.Join(lines, "`r`n")
     }
 
@@ -1028,7 +1031,11 @@ class BC_Overlay {
         if !BC_Overlay.HasTarget(snapshot) {
             return "Compare: player-only"
         }
-        return "Compare: " BC_State.BuildComparisonText(snapshot) " | Edge: " BC_State.BuildComparisonDeltaText(snapshot)
+        line := "Compare: " BC_State.BuildComparisonText(snapshot) " | Edge: " BC_State.BuildComparisonDeltaText(snapshot)
+        if BC_Overlay.IsTacticalSurface() {
+            line .= " | Trend: " BC_Overlay.SafeText(snapshot.rangeTrendText, "unknown")
+        }
+        return line
     }
 
     static IsTacticalSurface() {

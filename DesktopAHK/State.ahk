@@ -73,6 +73,7 @@ class BC_State {
         sampleIndex := IsObject(context) && context.HasOwnProp("SampleIndex") ? context.SampleIndex : ""
         sequence := transport.HasOwnProp("Sequence") ? transport.Sequence : ""
         sessionStats := BC_State.UpdateSessionStats(validationResult, sampleIndex, sequence)
+        previousLatest := BC_State.Latest
 
         if (validationResult.IsAccepted && details.HasOwnProp("Pitch") && details.Pitch > 0 && BC_State.ShouldUpdateLockedGeometry(image)) {
             BC_State.LockedGeometry := {
@@ -151,6 +152,7 @@ class BC_State {
             } else if (pageName = "tactical-combat") {
                 BC_State.PageAcceptedTicks.Tactical := A_TickCount
                 BC_State.ApplyTacticalPage(latest, pageData)
+                BC_State.ApplyTacticalDynamics(latest, previousLatest)
             }
         }
 
@@ -159,7 +161,7 @@ class BC_State {
 
         BC_State.Latest := latest
         if (persistSnapshot) {
-            BC_State.WriteSnapshot()
+        BC_State.WriteSnapshot()
         }
         return BC_State.Latest
     }
@@ -214,12 +216,12 @@ class BC_State {
         latest.PlayerHit := BC_State.GetValue(pageData, "PlayerHit", BC_State.GetValue(latest, "PlayerHit", ""))
         latest.PlayerZoneHash16 := BC_State.GetValue(pageData, "PlayerZoneHash16", BC_State.GetValue(latest, "PlayerZoneHash16", ""))
         latest.TargetZoneHash16 := BC_State.GetValue(pageData, "TargetZoneHash16", BC_State.GetValue(latest, "TargetZoneHash16", ""))
-        latest.PlayerCoordX := BC_State.GetValue(pageData, "PlayerCoordX", BC_State.GetValue(latest, "PlayerCoordX", ""))
-        latest.PlayerCoordY := BC_State.GetValue(pageData, "PlayerCoordY", BC_State.GetValue(latest, "PlayerCoordY", ""))
-        latest.PlayerCoordZ := BC_State.GetValue(pageData, "PlayerCoordZ", BC_State.GetValue(latest, "PlayerCoordZ", ""))
-        latest.TargetCoordX := BC_State.GetValue(pageData, "TargetCoordX", BC_State.GetValue(latest, "TargetCoordX", ""))
-        latest.TargetCoordY := BC_State.GetValue(pageData, "TargetCoordY", BC_State.GetValue(latest, "TargetCoordY", ""))
-        latest.TargetCoordZ := BC_State.GetValue(pageData, "TargetCoordZ", BC_State.GetValue(latest, "TargetCoordZ", ""))
+        latest.PlayerCoordX := BC_State.RoundTenths(BC_State.GetValue(pageData, "PlayerCoordX", BC_State.GetValue(latest, "PlayerCoordX", "")))
+        latest.PlayerCoordY := BC_State.RoundTenths(BC_State.GetValue(pageData, "PlayerCoordY", BC_State.GetValue(latest, "PlayerCoordY", "")))
+        latest.PlayerCoordZ := BC_State.RoundTenths(BC_State.GetValue(pageData, "PlayerCoordZ", BC_State.GetValue(latest, "PlayerCoordZ", "")))
+        latest.TargetCoordX := BC_State.RoundTenths(BC_State.GetValue(pageData, "TargetCoordX", BC_State.GetValue(latest, "TargetCoordX", "")))
+        latest.TargetCoordY := BC_State.RoundTenths(BC_State.GetValue(pageData, "TargetCoordY", BC_State.GetValue(latest, "TargetCoordY", "")))
+        latest.TargetCoordZ := BC_State.RoundTenths(BC_State.GetValue(pageData, "TargetCoordZ", BC_State.GetValue(latest, "TargetCoordZ", "")))
         latest.TargetRelationCode := BC_State.GetValue(pageData, "TargetRelationCode", BC_State.GetValue(latest, "TargetRelationCode", ""))
         latest.TargetRelationName := BC_State.RelationName(latest.TargetRelationCode)
         latest.TargetTierCode := BC_State.GetValue(pageData, "TargetTierCode", BC_State.GetValue(latest, "TargetTierCode", ""))
@@ -228,7 +230,63 @@ class BC_State {
         latest.TargetTaggedName := BC_State.TaggedName(latest.TargetTaggedCode)
         latest.TargetCallingCode := BC_State.GetValue(pageData, "TargetCallingCode", BC_State.GetValue(latest, "TargetCallingCode", ""))
         latest.TargetCallingName := BC_State.CallingName(latest.TargetCallingCode)
-        latest.TargetRadius := BC_State.GetValue(pageData, "TargetRadius", BC_State.GetValue(latest, "TargetRadius", ""))
+        latest.TargetRadius := BC_State.RoundTenths(BC_State.GetValue(pageData, "TargetRadius", BC_State.GetValue(latest, "TargetRadius", "")))
+    }
+
+    static ApplyTacticalDynamics(latest, previousLatest) {
+        if !IsObject(previousLatest) {
+            latest.PlayerMoveDeltaXZ := ""
+            latest.PlayerMoveState := "unknown"
+            latest.TargetMoveDeltaXZ := ""
+            latest.TargetMoveState := "unknown"
+            latest.DistanceDeltaXZ := ""
+            latest.RangeTrendText := "unknown"
+            return
+        }
+
+        latest.PlayerMoveDeltaXZ := BC_State.MovementDeltaXZ(
+            BC_State.GetValue(latest, "PlayerZoneHash16", ""),
+            BC_State.GetValue(latest, "PlayerCoordX", ""),
+            BC_State.GetValue(latest, "PlayerCoordZ", ""),
+            BC_State.GetValue(previousLatest, "PlayerZoneHash16", ""),
+            BC_State.GetValue(previousLatest, "PlayerCoordX", ""),
+            BC_State.GetValue(previousLatest, "PlayerCoordZ", "")
+        )
+        latest.PlayerMoveState := BC_State.MovementStateText(latest.PlayerMoveDeltaXZ)
+
+        latest.TargetMoveDeltaXZ := BC_State.MovementDeltaXZ(
+            BC_State.GetValue(latest, "TargetZoneHash16", ""),
+            BC_State.GetValue(latest, "TargetCoordX", ""),
+            BC_State.GetValue(latest, "TargetCoordZ", ""),
+            BC_State.GetValue(previousLatest, "TargetZoneHash16", ""),
+            BC_State.GetValue(previousLatest, "TargetCoordX", ""),
+            BC_State.GetValue(previousLatest, "TargetCoordZ", "")
+        )
+        latest.TargetMoveState := BC_State.MovementStateText(latest.TargetMoveDeltaXZ)
+
+        currentDistance := BC_State.DistanceXZ({
+            playerZoneHash16: BC_State.GetValue(latest, "PlayerZoneHash16", ""),
+            targetZoneHash16: BC_State.GetValue(latest, "TargetZoneHash16", ""),
+            playerCoordX: BC_State.GetValue(latest, "PlayerCoordX", ""),
+            playerCoordZ: BC_State.GetValue(latest, "PlayerCoordZ", ""),
+            targetCoordX: BC_State.GetValue(latest, "TargetCoordX", ""),
+            targetCoordZ: BC_State.GetValue(latest, "TargetCoordZ", "")
+        })
+        previousDistance := BC_State.DistanceXZ({
+            playerZoneHash16: BC_State.GetValue(previousLatest, "PlayerZoneHash16", ""),
+            targetZoneHash16: BC_State.GetValue(previousLatest, "TargetZoneHash16", ""),
+            playerCoordX: BC_State.GetValue(previousLatest, "PlayerCoordX", ""),
+            playerCoordZ: BC_State.GetValue(previousLatest, "PlayerCoordZ", ""),
+            targetCoordX: BC_State.GetValue(previousLatest, "TargetCoordX", ""),
+            targetCoordZ: BC_State.GetValue(previousLatest, "TargetCoordZ", "")
+        })
+
+        latest.DistanceDeltaXZ := ""
+        latest.RangeTrendText := "unknown"
+        if (currentDistance != "" && previousDistance != "") {
+            latest.DistanceDeltaXZ := Round(currentDistance - previousDistance, 1)
+            latest.RangeTrendText := BC_State.RangeTrendText(latest.DistanceDeltaXZ)
+        }
     }
 
     static BuildSnapshot() {
@@ -290,6 +348,12 @@ class BC_State {
             targetCoordX: BC_State.GetValue(latest, "TargetCoordX", ""),
             targetCoordY: BC_State.GetValue(latest, "TargetCoordY", ""),
             targetCoordZ: BC_State.GetValue(latest, "TargetCoordZ", ""),
+            playerMoveDeltaXZ: BC_State.GetValue(latest, "PlayerMoveDeltaXZ", ""),
+            playerMoveState: BC_State.GetValue(latest, "PlayerMoveState", "unknown"),
+            targetMoveDeltaXZ: BC_State.GetValue(latest, "TargetMoveDeltaXZ", ""),
+            targetMoveState: BC_State.GetValue(latest, "TargetMoveState", "unknown"),
+            distanceDeltaXZ: BC_State.GetValue(latest, "DistanceDeltaXZ", ""),
+            rangeTrendText: BC_State.GetValue(latest, "RangeTrendText", "unknown"),
             playerDamageEstimate: BC_State.GetValue(latest, "PlayerDamageEstimate", ""),
             targetDamageEstimate: BC_State.GetValue(latest, "TargetDamageEstimate", ""),
             searchMode: BC_State.GetValue(latest, "SearchMode", ""),
@@ -402,6 +466,12 @@ class BC_State {
         fields.Push(BC_State.JsonNumberField("targetCoordX", snapshot.targetCoordX))
         fields.Push(BC_State.JsonNumberField("targetCoordY", snapshot.targetCoordY))
         fields.Push(BC_State.JsonNumberField("targetCoordZ", snapshot.targetCoordZ))
+        fields.Push(BC_State.JsonNumberField("playerMoveDeltaXZ", snapshot.playerMoveDeltaXZ))
+        fields.Push(BC_State.JsonStringField("playerMoveState", snapshot.playerMoveState))
+        fields.Push(BC_State.JsonNumberField("targetMoveDeltaXZ", snapshot.targetMoveDeltaXZ))
+        fields.Push(BC_State.JsonStringField("targetMoveState", snapshot.targetMoveState))
+        fields.Push(BC_State.JsonNumberField("distanceDeltaXZ", snapshot.distanceDeltaXZ))
+        fields.Push(BC_State.JsonStringField("rangeTrendText", snapshot.rangeTrendText))
         fields.Push(BC_State.JsonBoolField("sameZone", snapshot.sameZone))
         fields.Push(BC_State.JsonNumberField("distanceXZ", snapshot.distanceXZ))
         fields.Push(BC_State.JsonStringField("distanceBucketText", snapshot.distanceBucketText))
@@ -497,8 +567,12 @@ class BC_State {
         lines.Push("TargetZoneHash16: " BC_State.HexText(snapshot.targetZoneHash16, 4))
         lines.Push("PlayerCoord: " BC_State.NumberText(snapshot.playerCoordX) ", " BC_State.NumberText(snapshot.playerCoordY) ", " BC_State.NumberText(snapshot.playerCoordZ))
         lines.Push("TargetCoord: " BC_State.NumberText(snapshot.targetCoordX) ", " BC_State.NumberText(snapshot.targetCoordY) ", " BC_State.NumberText(snapshot.targetCoordZ))
+        lines.Push("PlayerMove: " BC_State.DefaultText(snapshot.playerMoveState, "unknown") " (" BC_State.NumberText(snapshot.playerMoveDeltaXZ) ")")
+        lines.Push("TargetMove: " BC_State.DefaultText(snapshot.targetMoveState, "unknown") " (" BC_State.NumberText(snapshot.targetMoveDeltaXZ) ")")
         lines.Push("SameZone: " BC_State.BoolText(snapshot.sameZone))
         lines.Push("DistanceXZ: " BC_State.NumberText(snapshot.distanceXZ))
+        lines.Push("DistanceDeltaXZ: " BC_State.NumberText(snapshot.distanceDeltaXZ))
+        lines.Push("RangeTrend: " BC_State.DefaultText(snapshot.rangeTrendText, "unknown"))
         lines.Push("DistanceBucket: " snapshot.distanceBucketText)
         lines.Push("PlayerDamageEstimate: " BC_State.NumberText(snapshot.playerDamageEstimate))
         lines.Push("TargetDamageEstimate: " BC_State.NumberText(snapshot.targetDamageEstimate))
@@ -582,7 +656,14 @@ class BC_State {
                 "Tactical: dist " BC_State.DefaultText(snapshot.distanceXZ, "-")
                 " | bucket " BC_State.DefaultText(snapshot.distanceBucketText, "-")
                 " | sameZone " BC_State.BoolText(snapshot.sameZone)
+                " | trend " BC_State.DefaultText(snapshot.rangeTrendText, "unknown")
                 " | targetCalling " BC_State.DefaultText(snapshot.targetCallingName, "unknown")
+            )
+            lines.Push(
+                "Motion: player " BC_State.DefaultText(snapshot.playerMoveState, "unknown")
+                " (" BC_State.DefaultText(snapshot.playerMoveDeltaXZ, "-") ")"
+                " | target " BC_State.DefaultText(snapshot.targetMoveState, "unknown")
+                " (" BC_State.DefaultText(snapshot.targetMoveDeltaXZ, "-") ")"
             )
         } else {
             lines.Push("Target: none")
@@ -657,9 +738,15 @@ class BC_State {
         fields.Push(BC_State.JsonStringField("targetTierName", snapshot.targetTierName))
         fields.Push(BC_State.JsonStringField("targetTaggedName", snapshot.targetTaggedName))
         fields.Push(BC_State.JsonStringField("targetCallingName", snapshot.targetCallingName))
+        fields.Push(BC_State.JsonStringField("playerMoveState", snapshot.playerMoveState))
+        fields.Push(BC_State.JsonNumberField("playerMoveDeltaXZ", snapshot.playerMoveDeltaXZ))
+        fields.Push(BC_State.JsonStringField("targetMoveState", snapshot.targetMoveState))
+        fields.Push(BC_State.JsonNumberField("targetMoveDeltaXZ", snapshot.targetMoveDeltaXZ))
         fields.Push(BC_State.JsonBoolField("sameZone", snapshot.sameZone))
         fields.Push(BC_State.JsonNumberField("distanceXZ", snapshot.distanceXZ))
+        fields.Push(BC_State.JsonNumberField("distanceDeltaXZ", snapshot.distanceDeltaXZ))
         fields.Push(BC_State.JsonStringField("distanceBucketText", snapshot.distanceBucketText))
+        fields.Push(BC_State.JsonStringField("rangeTrendText", snapshot.rangeTrendText))
         fields.Push(BC_State.JsonStringField("searchMode", snapshot.searchMode))
         fields.Push(BC_State.JsonStringField("captureSource", snapshot.captureSource))
         fields.Push(BC_State.JsonStringField("captureRouteReason", snapshot.captureRouteReason))
@@ -1238,6 +1325,39 @@ class BC_State {
         return Round(Sqrt((dx * dx) + (dz * dz)), 1)
     }
 
+    static MovementDeltaXZ(currentZoneHash, currentX, currentZ, previousZoneHash, previousX, previousZ) {
+        if (currentZoneHash = "" || previousZoneHash = "" || currentZoneHash = 0 || currentZoneHash != previousZoneHash) {
+            return ""
+        }
+        if (currentX = "" || currentZ = "" || previousX = "" || previousZ = "") {
+            return ""
+        }
+
+        dx := Number(currentX) - Number(previousX)
+        dz := Number(currentZ) - Number(previousZ)
+        return Round(Sqrt((dx * dx) + (dz * dz)), 1)
+    }
+
+    static MovementStateText(deltaXZ) {
+        if (deltaXZ = "") {
+            return "unknown"
+        }
+        return deltaXZ >= 0.5 ? "moving" : "steady"
+    }
+
+    static RangeTrendText(distanceDeltaXZ) {
+        if (distanceDeltaXZ = "") {
+            return "unknown"
+        }
+        if (distanceDeltaXZ <= -0.5) {
+            return "closing"
+        }
+        if (distanceDeltaXZ >= 0.5) {
+            return "opening"
+        }
+        return "stable"
+    }
+
     static DistanceBucket(distance) {
         if (distance = "") {
             return 0
@@ -1274,6 +1394,13 @@ class BC_State {
             return "far"
         }
         return "unknown"
+    }
+
+    static RoundTenths(value) {
+        if (value = "") {
+            return ""
+        }
+        return Round(Number(value), 1)
     }
 
     static JsonStringField(name, value) {
