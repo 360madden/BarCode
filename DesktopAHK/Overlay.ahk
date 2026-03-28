@@ -48,6 +48,10 @@ class BC_Overlay {
     static LiveUiLastAcceptedSnapshot := ""
     static LiveUiHistory := []
     static LiveUiHistoryLimit := 8
+    static WindowShown := false
+    static ControlTextCache := {}
+    static ControlValueCache := {}
+    static ControlFontCache := {}
 
     static DiscardWindow() {
         if IsObject(BC_Overlay.Window) {
@@ -60,6 +64,14 @@ class BC_Overlay {
         BC_Overlay.Window := ""
         BC_Overlay.Controls := {}
         BC_Overlay.ActiveWindowNoActivate := false
+        BC_Overlay.ResetRenderCaches()
+    }
+
+    static ResetRenderCaches() {
+        BC_Overlay.WindowShown := false
+        BC_Overlay.ControlTextCache := {}
+        BC_Overlay.ControlValueCache := {}
+        BC_Overlay.ControlFontCache := {}
     }
 
     static EnsureWindow(title := "BarCode Reader Dashboard") {
@@ -208,6 +220,7 @@ class BC_Overlay {
             HistoryBody: historyBody,
             Footer: footer
         }
+        BC_Overlay.ResetRenderCaches()
 
         return window
     }
@@ -354,6 +367,7 @@ class BC_Overlay {
             HistoryText: historyText,
             Footer: footer
         }
+        BC_Overlay.ResetRenderCaches()
 
         return window
     }
@@ -372,6 +386,7 @@ class BC_Overlay {
         BC_Overlay.Controls := {}
         BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.LastSnapshot := ""
+        BC_Overlay.ResetRenderCaches()
     }
 
     static CloseWindow(*) {
@@ -388,6 +403,7 @@ class BC_Overlay {
         BC_Overlay.Controls := {}
         BC_Overlay.SurfaceMode := "dashboard"
         BC_Overlay.LastSnapshot := ""
+        BC_Overlay.ResetRenderCaches()
     }
 
     static StopLiveUiTimers() {
@@ -421,12 +437,57 @@ class BC_Overlay {
         BC_Overlay.ResetLiveUiHistory()
     }
 
-    static ShowWindow(window) {
-        if BC_Overlay.WindowNoActivate {
-            window.Show("NA")
+    static SetControlText(controlName, text) {
+        if !(IsObject(BC_Overlay.Controls) && BC_Overlay.Controls.HasOwnProp(controlName)) {
             return
         }
-        window.Show()
+
+        normalized := text = "" ? "" : ("" text)
+        if !BC_Overlay.ControlTextCache.HasOwnProp(controlName) || BC_Overlay.ControlTextCache.%controlName% != normalized {
+            BC_Overlay.Controls.%controlName%.Text := normalized
+            BC_Overlay.ControlTextCache.%controlName% := normalized
+        }
+    }
+
+    static SetControlValue(controlName, value) {
+        if !(IsObject(BC_Overlay.Controls) && BC_Overlay.Controls.HasOwnProp(controlName)) {
+            return
+        }
+
+        normalized := value = "" ? "" : ("" value)
+        if !BC_Overlay.ControlValueCache.HasOwnProp(controlName) || BC_Overlay.ControlValueCache.%controlName% != normalized {
+            BC_Overlay.Controls.%controlName%.Value := normalized
+            BC_Overlay.ControlValueCache.%controlName% := normalized
+        }
+    }
+
+    static SetControlFontColor(controlName, color, fontName := "Consolas") {
+        if !(IsObject(BC_Overlay.Controls) && BC_Overlay.Controls.HasOwnProp(controlName)) {
+            return
+        }
+
+        spec := "c" color "|" fontName
+        if !BC_Overlay.ControlFontCache.HasOwnProp(controlName) || BC_Overlay.ControlFontCache.%controlName% != spec {
+            try {
+                BC_Overlay.Controls.%controlName%.SetFont("c" color, fontName)
+            } catch {
+                return
+            }
+            BC_Overlay.ControlFontCache.%controlName% := spec
+        }
+    }
+
+    static ShowWindow(window) {
+        if BC_Overlay.WindowShown {
+            return
+        }
+
+        if BC_Overlay.WindowNoActivate {
+            window.Show("NA")
+        } else {
+            window.Show()
+        }
+        BC_Overlay.WindowShown := true
     }
 
     static HasLiveUiProvider() {
@@ -515,11 +576,8 @@ class BC_Overlay {
 
     static SetFooter(text) {
         if (IsObject(BC_Overlay.Controls) && BC_Overlay.Controls.HasOwnProp("Footer")) {
-            BC_Overlay.Controls.Footer.Text := text
-            try {
-                BC_Overlay.Controls.Footer.SetFont("c" BC_Overlay.Palette.Footer, "Consolas")
-            } catch {
-            }
+            BC_Overlay.SetControlText("Footer", text)
+            BC_Overlay.SetControlFontColor("Footer", BC_Overlay.Palette.Footer)
         }
     }
 
@@ -877,39 +935,34 @@ class BC_Overlay {
         BC_Overlay.CurrentTitle := title
         BC_Overlay.LastSnapshot := snapshot
 
-        controls.Header.Text := title
-        try {
-            controls.Status.SetFont("c" statusColor, "Consolas")
-            controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
-            controls.TransportText.SetFont("c" BC_Overlay.Palette.Header, "Consolas")
-            controls.CaptureText.SetFont("c" BC_Overlay.CaptureColor(snapshot), "Consolas")
-            controls.SessionText.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
-        } catch {
-        }
-        controls.Status.Text := "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText
-        controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
-        controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
-        controls.PlayerResourceLabel.Text := "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none")
-        controls.PlayerResourceBar.Value := BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
-        controls.PlayerMeta.Text := BC_Overlay.FormatPlayerMeta(snapshot)
-        controls.PlayerOffense.Value := BC_Overlay.FormatPlayerOffense(snapshot)
+        BC_Overlay.SetControlText("Header", title)
+        BC_Overlay.SetControlFontColor("Status", statusColor)
+        BC_Overlay.SetControlFontColor("CaptureText", BC_Overlay.CaptureColor(snapshot))
+        BC_Overlay.SetControlFontColor("SessionText", BC_Overlay.SessionColor(snapshot))
+        BC_Overlay.SetControlText("Status", "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText)
+        BC_Overlay.SetControlText("PlayerHealthLabel", "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")")
+        BC_Overlay.SetControlValue("PlayerHealthBar", BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
+        BC_Overlay.SetControlText("PlayerResourceLabel", "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none"))
+        BC_Overlay.SetControlValue("PlayerResourceBar", BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax))
+        BC_Overlay.SetControlText("PlayerMeta", BC_Overlay.FormatPlayerMeta(snapshot))
+        BC_Overlay.SetControlValue("PlayerOffense", BC_Overlay.FormatPlayerOffense(snapshot))
 
         hasTarget := BC_Overlay.HasTarget(snapshot)
-        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -"
-        controls.TargetHealthBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0
-        controls.TargetResourceLabel.Text := hasTarget
+        BC_Overlay.SetControlText("TargetHealthLabel", hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -")
+        BC_Overlay.SetControlValue("TargetHealthBar", hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0)
+        BC_Overlay.SetControlText("TargetResourceLabel", hasTarget
             ? ("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ") " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none"))
-            : "Resource: -"
-        controls.TargetResourceBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0
-        controls.TargetMeta.Text := BC_Overlay.FormatTargetMeta(snapshot)
-        controls.TargetExtras.Value := BC_Overlay.FormatTargetExtras(snapshot)
+            : "Resource: -")
+        BC_Overlay.SetControlValue("TargetResourceBar", hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0)
+        BC_Overlay.SetControlText("TargetMeta", BC_Overlay.FormatTargetMeta(snapshot))
+        BC_Overlay.SetControlValue("TargetExtras", BC_Overlay.FormatTargetExtras(snapshot))
 
-        controls.TransportText.Text := BC_Overlay.FormatTransportText(snapshot)
-        controls.CaptureText.Text := BC_Overlay.FormatCaptureText(snapshot)
-        controls.SessionText.Text := BC_Overlay.FormatSessionText(snapshot)
-        controls.DetailsBody.Value := BC_State.BuildOperatorSummaryText(snapshot) "`r`n`r`n" BC_State.BuildSnapshotText(snapshot)
-        controls.HistoryBody.Value := BC_Overlay.RenderLiveUiHistory()
-        controls.Footer.Text := "Summary: " BC_Config.LiveSummaryTextPath " | State: " BC_Config.LiveStateTextPath
+        BC_Overlay.SetControlText("TransportText", BC_Overlay.FormatTransportText(snapshot))
+        BC_Overlay.SetControlText("CaptureText", BC_Overlay.FormatCaptureText(snapshot))
+        BC_Overlay.SetControlText("SessionText", BC_Overlay.FormatSessionText(snapshot))
+        BC_Overlay.SetControlValue("DetailsBody", BC_State.BuildOperatorSummaryText(snapshot) "`r`n`r`n" BC_State.BuildSnapshotText(snapshot))
+        BC_Overlay.SetControlValue("HistoryBody", BC_Overlay.RenderLiveUiHistory())
+        BC_Overlay.SetControlText("Footer", "Summary: " BC_Config.LiveSummaryTextPath " | State: " BC_Config.LiveStateTextPath)
 
         BC_Overlay.ShowWindow(window)
         return window
@@ -929,46 +982,41 @@ class BC_Overlay {
         BC_Overlay.CurrentTitle := title
         BC_Overlay.LastSnapshot := snapshot
 
-        controls.Header.Text := title
-        try {
-            controls.Status.SetFont("c" statusColor, "Consolas")
-            controls.LiveMode.SetFont("c" BC_Overlay.Palette.Mode, "Consolas")
-            controls.CompareText.SetFont("c" BC_Overlay.CompareColor(snapshot), "Consolas")
-            controls.PlayerStatus.SetFont("c" BC_Overlay.PlayerStatusColor(snapshot), "Consolas")
-            controls.TargetStatus.SetFont("c" BC_Overlay.TargetStatusColor(snapshot), "Consolas")
-            controls.TransportText.SetFont("c" BC_Overlay.Palette.Header, "Consolas")
-            controls.CaptureText.SetFont("c" BC_Overlay.CaptureColor(snapshot), "Consolas")
-            controls.SessionText.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
-            controls.Footer.SetFont("c" BC_Overlay.SessionColor(snapshot), "Consolas")
-        } catch {
-        }
+        BC_Overlay.SetControlText("Header", title)
+        BC_Overlay.SetControlFontColor("Status", statusColor)
+        BC_Overlay.SetControlFontColor("CompareText", BC_Overlay.CompareColor(snapshot))
+        BC_Overlay.SetControlFontColor("PlayerStatus", BC_Overlay.PlayerStatusColor(snapshot))
+        BC_Overlay.SetControlFontColor("TargetStatus", BC_Overlay.TargetStatusColor(snapshot))
+        BC_Overlay.SetControlFontColor("CaptureText", BC_Overlay.CaptureColor(snapshot))
+        BC_Overlay.SetControlFontColor("SessionText", BC_Overlay.SessionColor(snapshot))
+        BC_Overlay.SetControlFontColor("Footer", BC_Overlay.SessionColor(snapshot))
 
-        controls.Status.Text := "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText
-        controls.CompareText.Text := BC_Overlay.FormatHudCompareText(snapshot)
-        controls.PlayerHealthLabel.Text := "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")"
-        controls.PlayerHealthBar.Value := BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax)
-        controls.PlayerResourceLabel.Text := "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none")
-        controls.PlayerResourceBar.Value := BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax)
-        controls.PlayerMeta.Text := BC_Overlay.FormatPlayerMeta(snapshot)
-        controls.PlayerStatus.Text := BC_Overlay.FormatPlayerHudStatus(snapshot)
-        controls.PlayerOffense.Value := BC_Overlay.FormatPlayerOffense(snapshot)
+        BC_Overlay.SetControlText("Status", "Status: " acceptedText freshnessText searchText (ageText = "" ? "" : (" | Age " ageText)) reasonText sequenceText confidenceText)
+        BC_Overlay.SetControlText("CompareText", BC_Overlay.FormatHudCompareText(snapshot))
+        BC_Overlay.SetControlText("PlayerHealthLabel", "Health: " BC_State.PairOrDefaultText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) " (" BC_State.PercentText(snapshot.playerHealthCurrent, snapshot.playerHealthMax) ")")
+        BC_Overlay.SetControlValue("PlayerHealthBar", BC_Overlay.Percent(snapshot.playerHealthCurrent, snapshot.playerHealthMax))
+        BC_Overlay.SetControlText("PlayerResourceLabel", "Resource: " BC_State.PairOrDefaultText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) " (" BC_State.PercentText(snapshot.playerResourceCurrent, snapshot.playerResourceMax) ") " BC_Overlay.SafeText(snapshot.playerResourceKindName, "none"))
+        BC_Overlay.SetControlValue("PlayerResourceBar", BC_Overlay.Percent(snapshot.playerResourceCurrent, snapshot.playerResourceMax))
+        BC_Overlay.SetControlText("PlayerMeta", BC_Overlay.FormatPlayerMeta(snapshot))
+        BC_Overlay.SetControlText("PlayerStatus", BC_Overlay.FormatPlayerHudStatus(snapshot))
+        BC_Overlay.SetControlValue("PlayerOffense", BC_Overlay.FormatPlayerOffense(snapshot))
 
         hasTarget := BC_Overlay.HasTarget(snapshot)
-        controls.TargetHealthLabel.Text := hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -"
-        controls.TargetHealthBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0
-        controls.TargetResourceLabel.Text := hasTarget
+        BC_Overlay.SetControlText("TargetHealthLabel", hasTarget ? ("Health: " BC_State.PairOrDefaultText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) " (" BC_State.PercentText(snapshot.targetHealthCurrent, snapshot.targetHealthMax) ")") : "Health: -")
+        BC_Overlay.SetControlValue("TargetHealthBar", hasTarget ? BC_Overlay.Percent(snapshot.targetHealthCurrent, snapshot.targetHealthMax) : 0)
+        BC_Overlay.SetControlText("TargetResourceLabel", hasTarget
             ? ("Resource: " BC_State.PairOrDefaultText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) " (" BC_State.PercentText(snapshot.targetResourceCurrent, snapshot.targetResourceMax) ") " BC_Overlay.SafeText(snapshot.targetResourceKindName, "none"))
-            : "Resource: -"
-        controls.TargetResourceBar.Value := hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0
-        controls.TargetMeta.Text := BC_Overlay.FormatTargetMeta(snapshot)
-        controls.TargetStatus.Text := BC_Overlay.FormatTargetHudStatus(snapshot)
-        controls.TargetExtras.Value := BC_Overlay.FormatTargetExtras(snapshot)
+            : "Resource: -")
+        BC_Overlay.SetControlValue("TargetResourceBar", hasTarget ? BC_Overlay.Percent(snapshot.targetResourceCurrent, snapshot.targetResourceMax) : 0)
+        BC_Overlay.SetControlText("TargetMeta", BC_Overlay.FormatTargetMeta(snapshot))
+        BC_Overlay.SetControlText("TargetStatus", BC_Overlay.FormatTargetHudStatus(snapshot))
+        BC_Overlay.SetControlValue("TargetExtras", BC_Overlay.FormatTargetExtras(snapshot))
 
-        controls.TransportText.Text := BC_Overlay.FormatTransportText(snapshot)
-        controls.CaptureText.Text := BC_Overlay.FormatCaptureText(snapshot)
-        controls.SessionText.Text := BC_Overlay.FormatSessionText(snapshot)
-        controls.HistoryText.Value := BC_Overlay.RenderLiveUiHistory()
-        controls.Footer.Text := BC_Overlay.FormatReaderFooter(snapshot)
+        BC_Overlay.SetControlText("TransportText", BC_Overlay.FormatTransportText(snapshot))
+        BC_Overlay.SetControlText("CaptureText", BC_Overlay.FormatCaptureText(snapshot))
+        BC_Overlay.SetControlText("SessionText", BC_Overlay.FormatSessionText(snapshot))
+        BC_Overlay.SetControlValue("HistoryText", BC_Overlay.RenderLiveUiHistory())
+        BC_Overlay.SetControlText("Footer", BC_Overlay.FormatReaderFooter(snapshot))
 
         BC_Overlay.ShowWindow(window)
         return window
@@ -1154,7 +1202,7 @@ class BC_Overlay {
             BC_Overlay.LiveUiLastSnapshot := displaySnapshot
             BC_Overlay.PushLiveUiHistory(snapshot)
             BC_Overlay.RenderSnapshot(displaySnapshot, BC_Overlay.CurrentTitle)
-            BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot)) " | Age " BC_State.AgeText(displaySnapshot)
+            BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick " BC_Overlay.LiveUiTickCount " | Interval " BC_Overlay.LiveUiIntervalMs "ms | " StrUpper(BC_Overlay.FreshnessLabel(displaySnapshot)) " | Age " BC_State.AgeText(displaySnapshot))
         } catch as err {
             BC_Overlay.SetFooter("Live UI error: " err.Message)
             BC_Debug.WriteText(BC_Config.LatestRunPath, "BarCode liveui error`r`n" err.Message "`r`n" err.Stack)
@@ -1229,7 +1277,7 @@ class BC_Overlay {
         } else {
             BC_Overlay.EnsureWindow(windowTitle)
         }
-        BC_Overlay.Controls.LiveMode.Text := "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick 0 | Interval " BC_Overlay.LiveUiIntervalMs "ms"
+        BC_Overlay.SetControlText("LiveMode", "Mode: " BC_Overlay.LiveUiMode " | Source: " BC_Overlay.LiveUiSourceLabel " | Tick 0 | Interval " BC_Overlay.LiveUiIntervalMs "ms")
 
         BC_Overlay.LiveUiTick()
         BC_Overlay.WaitUntilLiveUiComplete()
